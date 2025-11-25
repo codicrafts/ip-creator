@@ -110,10 +110,6 @@ export default function ProfilePage() {
         className="flex flex-col min-h-screen bg-gray-50 pb-24 md:pt-16"
         style={{ backgroundColor: "#f9fafb" }}
       >
-        <header className="bg-white p-4 md:hidden sticky top-0 z-10 shadow-sm border-b border-gray-100 flex items-center justify-center">
-          <h2 className="font-bold text-lg text-gray-800">我的</h2>
-        </header>
-
         <div className="flex-1 p-4 md:p-8 space-y-6 overflow-y-auto max-w-7xl mx-auto w-full">
           {/* User Card */}
           {!isSelectionMode && (
