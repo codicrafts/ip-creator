@@ -4,7 +4,6 @@
   "/create/page": "app/create/page.js",
   "/edit/page": "app/edit/page.js",
   "/login/page": "app/login/page.js",
-  "/meme-editor/page": "app/meme-editor/page.js",
   "/page": "app/page.js",
   "/profile/page": "app/profile/page.js",
   "/result/page": "app/result/page.js"

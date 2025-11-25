@@ -6,7 +6,7 @@ export enum UserStatus {
   LOGGED_IN = 'LOGGED_IN', // 已登录
 }
 
-interface UserState {
+export interface UserState {
   status: UserStatus; // 用户状态：游客或已登录
   userId: string | null; // 用户ID（登录后才有）
   phone: string | null; // 手机号（登录后才有）

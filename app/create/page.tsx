@@ -6,7 +6,6 @@ import { useRef } from 'react';
 import { useAppDispatch } from '@/store/hooks';
 import { setSourceImage } from '@/store/slices/imageSlice';
 import { saveSourceImage } from '@/lib/image-storage';
-import { setCurrentView, AppView } from '@/store/slices/appSlice';
 import { setMemeDrafts, setActiveDraftIndex } from '@/store/slices/memeSlice';
 import { AnimationType } from '@/types';
 
