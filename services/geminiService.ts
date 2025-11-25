@@ -1,7 +1,5 @@
-// Nano Banana API endpoint
-const API_BASE_URL =
-  "https://api.laozhang.ai/v1beta/models/gemini-2.5-flash-image:generateContent";
-const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY;
+// 使用 Next.js API 路由代理 Gemini API 调用（服务端）
+const API_BASE_URL = "/api/gemini/generate";
 
 /**
  * Resize image if it exceeds max dimensions to prevent API errors.
@@ -58,16 +56,31 @@ export const generateExtendedScene = async (
   imageFormat?: "PNG" | "JPEG" | "WEBP"
 ): Promise<string> => {
   try {
-    if (!API_KEY) {
-      throw new Error("API_KEY is not set");
-    }
-
     // Optimize image size before sending
     const optimizedImage = await resizeImage(base64Image);
+
+    // 提取 mimeType（保留原始格式信息）
+    let detectedMimeType = "image/jpeg";
+    if (base64Image.startsWith("data:image/png")) {
+      detectedMimeType = "image/png";
+    } else if (base64Image.startsWith("data:image/webp")) {
+      detectedMimeType = "image/webp";
+    } else if (
+      base64Image.startsWith("data:image/jpeg") ||
+      base64Image.startsWith("data:image/jpg")
+    ) {
+      detectedMimeType = "image/jpeg";
+    }
+
     const cleanBase64 = optimizedImage.replace(
-      /^data:image\/(png|jpeg|webp);base64,/,
+      /^data:image\/(png|jpeg|jpg|webp);base64,/,
       ""
     );
+
+    // 验证 base64 数据
+    if (!cleanBase64 || cleanBase64.length === 0) {
+      throw new Error("Invalid base64 image data");
+    }
 
     const generationConfig: any = {
       responseModalities: ["IMAGE"],
@@ -77,13 +90,17 @@ export const generateExtendedScene = async (
     if (aspectRatio || imageSize || imageFormat) {
       generationConfig.imageConfig = {};
       if (aspectRatio) {
+        // aspectRatio 格式：例如 "16:9", "1:1" 等
         generationConfig.imageConfig.aspectRatio = aspectRatio;
       }
-      if (imageSize) {
-        generationConfig.imageConfig.imageSize = imageSize;
-      }
+      // 暂时注释掉 imageSize 的设置
+      // if (imageSize) {
+      //   // imageSize 格式：可能是 "1K", "2K", "4K" 或其他格式
+      //   generationConfig.imageConfig.imageSize = imageSize;
+      // }
       if (imageFormat) {
-        generationConfig.imageConfig.outputFormat = imageFormat;
+        // outputFormat 需要小写：例如 "png", "jpeg", "webp"
+        generationConfig.imageConfig.outputFormat = imageFormat.toLowerCase();
       }
     }
 
@@ -94,7 +111,7 @@ export const generateExtendedScene = async (
             {
               inlineData: {
                 data: cleanBase64,
-                mimeType: "image/jpeg", // optimized is always jpeg/png
+                mimeType: detectedMimeType,
               },
             },
             {
@@ -109,17 +126,38 @@ export const generateExtendedScene = async (
     const response = await fetch(API_BASE_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `API request failed: ${response.status} ${response.statusText} - ${errorText}`
-      );
+      let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        console.error("Gemini API Error:", errorData);
+        console.error(
+          "Request generationConfig:",
+          JSON.stringify(generationConfig, null, 2)
+        );
+
+        // 提取详细的错误信息
+        if (errorData.error) {
+          const error = errorData.error;
+          errorMessage =
+            error.message ||
+            error.localized_message ||
+            JSON.stringify(error) ||
+            errorMessage;
+        } else {
+          errorMessage = JSON.stringify(errorData) || errorMessage;
+        }
+      } catch (e) {
+        const errorText = await response.text();
+        console.error("Gemini API Error (text):", errorText);
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -150,10 +188,6 @@ export const generateSticker = async (
   moodPrompt: string
 ): Promise<string> => {
   try {
-    if (!API_KEY) {
-      throw new Error("API_KEY is not set");
-    }
-
     // Optimize image size before sending
     const optimizedImage = await resizeImage(base64Image);
     const cleanBase64 = optimizedImage.replace(
@@ -191,17 +225,21 @@ export const generateSticker = async (
     const response = await fetch(API_BASE_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `API request failed: ${response.status} ${response.statusText} - ${errorText}`
-      );
+      let errorMessage: string;
+      try {
+        const errorData = await response.json();
+        errorMessage =
+          errorData.error || errorData.details || JSON.stringify(errorData);
+      } catch {
+        errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();

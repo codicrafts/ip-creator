@@ -50,3 +50,55 @@ export interface MemeDraft {
   status: 'pending' | 'generating' | 'done' | 'error';
   animation: AnimationType;
 }
+
+// Payment Types
+export enum PaymentMethod {
+  WECHAT = 'WECHAT',
+  ALIPAY = 'ALIPAY'
+}
+
+export enum PaymentStatus {
+  PENDING = 'PENDING',
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED'
+}
+
+export interface PaymentOrder {
+  orderId: string;
+  amount: number; // 金额（分）
+  productName: string;
+  productDesc?: string;
+  paymentMethod: PaymentMethod;
+  status: PaymentStatus;
+  createdAt: number;
+  paidAt?: number;
+}
+
+export interface CreateOrderRequest {
+  amount: number; // 金额（分）
+  productName: string;
+  productDesc?: string;
+  paymentMethod: PaymentMethod;
+  userId?: string;
+}
+
+export interface CreateOrderResponse {
+  orderId: string;
+  paymentParams: WechatPaymentParams | AlipayPaymentParams;
+}
+
+// 微信支付参数
+export interface WechatPaymentParams {
+  appId: string;
+  timeStamp: string;
+  nonceStr: string;
+  package: string; // prepay_id=xxx
+  signType: string;
+  paySign: string;
+}
+
+// 支付宝支付参数
+export interface AlipayPaymentParams {
+  orderString: string; // 支付宝订单字符串
+}
