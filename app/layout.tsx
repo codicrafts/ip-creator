@@ -7,6 +7,9 @@ import { getServerUserInfo, getServerHistory } from "@/lib/server-auth";
 import { UserStatus } from "@/store/slices/userSlice";
 import { GeneratedImage, UserTier } from "@/types";
 import { UserInfo } from "@/services/userService";
+import GoogleAnalytics from "@/components/GoogleAnalytics";
+
+const TRACKING_ID = "G-RKP0BDSH43";
 
 export const metadata: Metadata = {
   title: "IP 创想坊",
@@ -78,6 +81,7 @@ export default async function RootLayout({
         >
           {children}
           <TabBarWrapper />
+          <GoogleAnalytics trackingId={TRACKING_ID} />
         </ReduxProvider>
       </body>
     </html>
