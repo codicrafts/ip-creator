@@ -55,8 +55,8 @@ export const MEMBERSHIP_PLANS: Record<
     monthlyQuota: 1300,
     sceneQuota: 910, // 70% 分配给场景扩展（1300 × 0.7 = 910）
     memeQuota: 390, // 30% 分配给表情包制作（1300 × 0.3 = 390）
-    originalPrice: 0.01,
-    firstMonthPrice: 0.01, // 测试价格
+    originalPrice: 229,
+    firstMonthPrice: 137.4, // 首月6折（229 × 0.6 = 137.4）
     features: [
       "每月 910 张场景扩展",
       "每月 390 张表情包制作",
@@ -76,8 +76,8 @@ export const MEMBERSHIP_PLANS: Record<
     monthlyQuota: 3500,
     sceneQuota: 2450, // 70% 分配给场景扩展（3500 × 0.7 = 2450）
     memeQuota: 1050, // 30% 分配给表情包制作（3500 × 0.3 = 1050）
-    originalPrice: 0.01,
-    firstMonthPrice: 0.01, // 测试价格
+    originalPrice: 639,
+    firstMonthPrice: 383.4, // 首月6折（639 × 0.6 = 383.4）
     features: [
       "每月 2450 张场景扩展",
       "每月 1050 张表情包制作",
