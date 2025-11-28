@@ -5,7 +5,6 @@ import { ChevronLeft, Sparkles, Smile } from "lucide-react";
 import { useRef, useState } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setSourceImage } from "@/store/slices/imageSlice";
-import { saveSourceImage } from "@/lib/image-storage";
 import { setMemeDrafts, setActiveDraftIndex } from "@/store/slices/memeSlice";
 import { AnimationType } from "@/types";
 
@@ -38,9 +37,6 @@ export default function CreatePage() {
               mimeType: mimeType,
             })
           );
-
-          // 保存到 localStorage（每次进入 edit 都会替换最新的图片）
-          saveSourceImage(imageData, mimeType);
 
           // 跳转到场景扩展编辑页
           router.push("/edit");

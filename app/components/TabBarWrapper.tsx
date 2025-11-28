@@ -12,7 +12,7 @@ export default function TabBarWrapper({ children }: TabBarWrapperProps) {
   const pathname = usePathname();
   
   // 不在这些页面显示 TabBar
-  const hiddenPaths = ['/result'];
+  const hiddenPaths: string[] = [];
   const showTabBar = !hiddenPaths.includes(pathname);
 
   return (

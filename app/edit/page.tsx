@@ -263,7 +263,6 @@ export default function EditPage() {
       }
 
       dispatch(setLoadingState(LoadingState.GENERATING));
-      router.push("/result");
 
       try {
         let styleLabels = "";
@@ -356,7 +355,37 @@ export default function EditPage() {
           dispatch(addToHistory(newHistoryItem));
         }
 
-        dispatch(setResultImage(cloudImageUrl));
+        // 单图模式：直接用生成结果替换原图
+        if (!isMultiImageMode) {
+          // 检测结果图片的 MIME 类型
+          let resultMimeType = mimeType;
+          if (cloudImageUrl.startsWith("data:image")) {
+            if (cloudImageUrl.startsWith("data:image/png")) {
+              resultMimeType = "image/png";
+            } else if (
+              cloudImageUrl.startsWith("data:image/jpeg") ||
+              cloudImageUrl.startsWith("data:image/jpg")
+            ) {
+              resultMimeType = "image/jpeg";
+            } else if (cloudImageUrl.startsWith("data:image/webp")) {
+              resultMimeType = "image/webp";
+            }
+          }
+
+          // 替换原图
+          dispatch(
+            setSourceImage({
+              image: cloudImageUrl,
+              mimeType: resultMimeType,
+            })
+          );
+          // 清空结果图片（因为已经替换到 sourceImage 了）
+          dispatch(setResultImage(null));
+        } else {
+          // 多图模式：保持原有逻辑
+          dispatch(setResultImage(cloudImageUrl));
+        }
+
         dispatch(setLoadingState(LoadingState.SUCCESS));
       } catch (err) {
         console.error(err);
@@ -632,24 +661,25 @@ export default function EditPage() {
               </div>
             ) : (
               // 单图模式：原有显示
-              <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+              <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 relative">
                 {sourceImage ? (
                   <>
                     <img
-                      src={sourceImage}
+                      src={getProxiedImageUrl(sourceImage)}
                       alt="Preview"
-                      className="w-full h-48 md:h-64 object-contain bg-gray-100 rounded-xl"
+                      className="w-full h-48 md:h-64 object-contain bg-gray-100 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => {
+                        if (loadingState !== LoadingState.GENERATING) {
+                          setViewingImageUrl(getProxiedImageUrl(sourceImage));
+                        }
+                      }}
                     />
-                    {resultImage && (
-                      <div className="mt-4 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-                        <img
-                          src={getProxiedImageUrl(resultImage)}
-                          alt="Generated Result"
-                          className="w-full h-48 md:h-64 object-contain bg-gray-100 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => {
-                            setViewingImageUrl(getProxiedImageUrl(resultImage));
-                          }}
-                        />
+                    {loadingState === LoadingState.GENERATING && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                          <span className="text-white text-sm">生成中...</span>
+                        </div>
                       </div>
                     )}
                   </>
