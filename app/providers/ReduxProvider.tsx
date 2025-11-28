@@ -1,19 +1,26 @@
-'use client';
+"use client";
 
-import { Provider } from 'react-redux';
-import { makeStore } from '@/store/store';
-import { useEffect, useRef } from 'react';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { setUserTier, setSceneUsage, setMemeUsage, setUserStatus, setUserInfo } from '@/store/slices/userSlice';
-import { addToHistory, setHistory } from '@/store/slices/imageSlice';
-import { GeneratedImage } from '@/types';
-import { UserTier, DailyUsage } from '@/types';
-import { UserStatus, UserState } from '@/store/slices/userSlice';
-import { getTodayDateString } from '@/lib/date-utils';
+import { Provider } from "react-redux";
+import { makeStore } from "@/store/store";
+import { useEffect, useRef } from "react";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import {
+  setUserTier,
+  setSceneUsage,
+  setMemeUsage,
+  setUserStatus,
+  setUserInfo,
+  setMembershipExpiresAt,
+} from "@/store/slices/userSlice";
+import { addToHistory, setHistory } from "@/store/slices/imageSlice";
+import { GeneratedImage } from "@/types";
+import { UserTier, DailyUsage } from "@/types";
+import { UserStatus, UserState } from "@/store/slices/userSlice";
+import { getTodayDateString } from "@/lib/date-utils";
 
-const SCENE_USAGE_KEY = 'ip_creative_scene_usage';
-const MEME_USAGE_KEY = 'ip_creative_meme_usage';
-const STORAGE_KEY = 'ip_creative_history_v1';
+const SCENE_USAGE_KEY = "ip_creative_scene_usage";
+const MEME_USAGE_KEY = "ip_creative_meme_usage";
+const STORAGE_KEY = "ip_creative_history_v1";
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -22,7 +29,13 @@ interface ReduxProviderProps {
 }
 
 // 初始化 Redux state 的组件
-function ReduxInitializer({ initialUserState, initialHistory }: { initialUserState?: Partial<UserState>; initialHistory?: GeneratedImage[] }) {
+function ReduxInitializer({
+  initialUserState,
+  initialHistory,
+}: {
+  initialUserState?: Partial<UserState>;
+  initialHistory?: GeneratedImage[];
+}) {
   const dispatch = useAppDispatch();
   const currentUserId = useAppSelector((state) => state.user.userId);
   const userTier = useAppSelector((state) => state.user.userTier);
@@ -44,22 +57,33 @@ function ReduxInitializer({ initialUserState, initialHistory }: { initialUserSta
         // 只在状态未初始化时设置（避免覆盖 SSR 数据）
         // 如果当前没有 userId 或 userId 不匹配，说明是客户端导航，需要设置
         if (!currentUserId || currentUserId !== initialUserState.userId) {
-          dispatch(setUserInfo({
-            userId: initialUserState.userId,
-            phone: initialUserState.phone || '',
-            userTier: initialUserState.userTier || UserTier.FREE,
-          }));
+          dispatch(
+            setUserInfo({
+              userId: initialUserState.userId,
+              phone: initialUserState.phone || "",
+              userTier: initialUserState.userTier || UserTier.FREE,
+              membershipExpiresAt:
+                (initialUserState as any).membershipExpiresAt || null,
+            })
+          );
           if (initialUserState.sceneUsage) {
             dispatch(setSceneUsage(initialUserState.sceneUsage));
           }
           if (initialUserState.memeUsage) {
             dispatch(setMemeUsage(initialUserState.memeUsage));
           }
+          if ((initialUserState as any).membershipExpiresAt !== undefined) {
+            dispatch(
+              setMembershipExpiresAt(
+                (initialUserState as any).membershipExpiresAt
+              )
+            );
+          }
         }
       } else {
         // 游客状态
         dispatch(setUserStatus(UserStatus.GUEST));
-        
+
         // 加载游客的使用量（从 localStorage）
         const savedSceneUsage = localStorage.getItem(SCENE_USAGE_KEY);
         if (savedSceneUsage) {
@@ -67,7 +91,7 @@ function ReduxInitializer({ initialUserState, initialHistory }: { initialUserSta
             const usage = JSON.parse(savedSceneUsage);
             dispatch(setSceneUsage(usage));
           } catch (e) {
-            console.error('Failed to load scene usage', e);
+            console.error("Failed to load scene usage", e);
           }
         }
 
@@ -77,7 +101,7 @@ function ReduxInitializer({ initialUserState, initialHistory }: { initialUserSta
             const usage = JSON.parse(savedMemeUsage);
             dispatch(setMemeUsage(usage));
           } catch (e) {
-            console.error('Failed to load meme usage', e);
+            console.error("Failed to load meme usage", e);
           }
         }
       }
@@ -91,7 +115,7 @@ function ReduxInitializer({ initialUserState, initialHistory }: { initialUserSta
   }, [dispatch, initialUserState, initialHistory, history]);
 
   const userStatus = useAppSelector((state) => state.user.status);
-  
+
   useEffect(() => {
     // 只有游客状态才保存到 localStorage，登录用户的使用次数由后端管理
     if (userStatus === UserStatus.GUEST) {
@@ -114,7 +138,11 @@ function ReduxInitializer({ initialUserState, initialHistory }: { initialUserSta
   return null;
 }
 
-export default function ReduxProvider({ children, initialUserState, initialHistory }: ReduxProviderProps) {
+export default function ReduxProvider({
+  children,
+  initialUserState,
+  initialHistory,
+}: ReduxProviderProps) {
   // 创建 store 实例（使用初始状态）
   const storeRef = useRef<ReturnType<typeof makeStore> | null>(null);
   if (!storeRef.current) {
@@ -122,23 +150,33 @@ export default function ReduxProvider({ children, initialUserState, initialHisto
     if (initialUserState) {
       // 将用户状态（包括使用次数）作为初始状态传入
       preloadedState.user = {
-        status: initialUserState.userId ? UserStatus.LOGGED_IN : UserStatus.GUEST,
+        status: initialUserState.userId
+          ? UserStatus.LOGGED_IN
+          : UserStatus.GUEST,
         userId: initialUserState.userId || null,
         phone: initialUserState.phone || null,
         userTier: initialUserState.userTier || UserTier.FREE,
-        sceneUsage: initialUserState.sceneUsage || { date: getTodayDateString(), count: 0 },
-        memeUsage: initialUserState.memeUsage || { date: getTodayDateString(), count: 0 },
+        sceneUsage: initialUserState.sceneUsage || {
+          date: getTodayDateString(),
+          count: 0,
+        },
+        memeUsage: initialUserState.memeUsage || {
+          date: getTodayDateString(),
+          count: 0,
+        },
+        membershipExpiresAt:
+          (initialUserState as any).membershipExpiresAt || null,
       };
     }
     if (initialHistory) {
       preloadedState.image = {
         sourceImage: null,
-        mimeType: 'image/png',
-        prompt: '',
+        mimeType: "image/png",
+        prompt: "",
         selectedStyle: null,
-        aspectRatio: '16:9',
-        imageSize: '1K',
-        imageFormat: 'PNG',
+        aspectRatio: "16:9",
+        imageSize: "1K",
+        imageFormat: "PNG",
         resultImage: null,
         history: initialHistory,
       };
@@ -148,9 +186,11 @@ export default function ReduxProvider({ children, initialUserState, initialHisto
 
   return (
     <Provider store={storeRef.current}>
-      <ReduxInitializer initialUserState={initialUserState} initialHistory={initialHistory} />
+      <ReduxInitializer
+        initialUserState={initialUserState}
+        initialHistory={initialHistory}
+      />
       {children}
     </Provider>
   );
 }
-

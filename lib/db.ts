@@ -3,8 +3,8 @@
  * 供 SSR 和 API 路由使用
  */
 
-import { UserTier } from '@/types';
-import { getTodayDateString, normalizeDateString } from '@/lib/date-utils';
+import { UserTier } from "@/types";
+import { getTodayDateString, normalizeDateString } from "@/lib/date-utils";
 
 // 动态导入 wx-server-sdk（CommonJS 模块）
 let cloudInstance: any;
@@ -79,10 +79,10 @@ export async function getUserInfoFromDB(userId: string) {
       userTier: (user.userTier || "FREE") as UserTier,
       sceneUsage: sceneUsage,
       memeUsage: memeUsage,
+      membershipExpiresAt: user.membershipExpiresAt || null,
     };
   } catch (error) {
     console.error("Get user info from DB error:", error);
     return null;
   }
 }
-

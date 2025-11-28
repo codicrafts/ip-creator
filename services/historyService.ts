@@ -79,7 +79,20 @@ export const getHistory = async (
       return [];
     }
 
-    return result.data || [];
+    // 处理不同的返回格式
+    // 如果返回的是对象且包含 history 字段，则使用 history 字段
+    if (result.data && typeof result.data === 'object' && !Array.isArray(result.data)) {
+      if (result.data.history && Array.isArray(result.data.history)) {
+        return result.data.history;
+      }
+    }
+
+    // 如果返回的是数组，直接返回
+    if (Array.isArray(result.data)) {
+      return result.data;
+    }
+
+    return [];
   } catch (error) {
     console.error('Get history error:', error);
     return [];
@@ -87,16 +100,16 @@ export const getHistory = async (
 };
 
 /**
- * 删除历史记录
+ * 删除历史记录（支持单个或批量删除）
  */
-export const deleteHistory = async (historyId: string): Promise<boolean> => {
+export const deleteHistory = async (historyId: string | string[]): Promise<boolean> => {
   try {
     const userId = getUserId();
 
     const result = await callCloudFunction('history', {
       action: 'delete',
       userId: userId || undefined,
-      historyId,
+      historyId: Array.isArray(historyId) ? historyId : [historyId],
     });
 
     return result.success === 1;

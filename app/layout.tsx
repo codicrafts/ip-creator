@@ -57,6 +57,7 @@ export default async function RootLayout({
     userTier: userInfo.userTier,
     sceneUsage: userInfo.sceneUsage,
     memeUsage: userInfo.memeUsage,
+    membershipExpiresAt: (userInfo as any).membershipExpiresAt || null,
   };
 
   return (

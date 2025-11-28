@@ -1,10 +1,10 @@
 export enum AppView {
-  HOME = 'HOME',
-  UPLOAD = 'UPLOAD',
-  EDIT = 'EDIT',
-  RESULT = 'RESULT',
-  PROFILE = 'PROFILE',
-  MEME_EDITOR = 'MEME_EDITOR'
+  HOME = "HOME",
+  UPLOAD = "UPLOAD",
+  EDIT = "EDIT",
+  RESULT = "RESULT",
+  PROFILE = "PROFILE",
+  MEME_EDITOR = "MEME_EDITOR",
 }
 
 export interface GeneratedImage {
@@ -16,16 +16,18 @@ export interface GeneratedImage {
 }
 
 export enum LoadingState {
-  IDLE = 'IDLE',
-  UPLOADING = 'UPLOADING',
-  GENERATING = 'GENERATING',
-  ERROR = 'ERROR',
-  SUCCESS = 'SUCCESS'
+  IDLE = "IDLE",
+  UPLOADING = "UPLOADING",
+  GENERATING = "GENERATING",
+  ERROR = "ERROR",
+  SUCCESS = "SUCCESS",
 }
 
 export enum UserTier {
-  FREE = 'FREE',
-  PREMIUM = 'PREMIUM'
+  FREE = "FREE",
+  BASIC = "BASIC", // 基础会员
+  STANDARD = "STANDARD", // 标准会员
+  PREMIUM = "PREMIUM", // 高级会员
 }
 
 export interface DailyUsage {
@@ -34,11 +36,11 @@ export interface DailyUsage {
 }
 
 export enum AnimationType {
-  NONE = 'none',
-  SHAKE = 'shake',
-  PULSE = 'pulse',
-  ZOOM = 'zoom',
-  SPIN = 'spin'
+  NONE = "none",
+  SHAKE = "shake",
+  PULSE = "pulse",
+  ZOOM = "zoom",
+  SPIN = "spin",
 }
 
 export interface MemeDraft {
@@ -47,21 +49,51 @@ export interface MemeDraft {
   generatedUrl: string | null;
   text: string; // The text overlay
   moodPrompt: string; // e.g., "laughing out loud"
-  status: 'pending' | 'generating' | 'done' | 'error';
+  status: "pending" | "generating" | "done" | "error";
   animation: AnimationType;
+  backgroundType?: "transparent" | "white" | "color"; // 背景类型
+  backgroundColor?: string; // 背景颜色（当 backgroundType 为 'color' 时使用）
+  removeBackground?: boolean; // 抠图开关
+  refineForeground?: boolean; // 精炼边缘开关（更高质量，但更慢）
+}
+
+// 场景扩展草稿
+export interface SceneDraft {
+  id: string;
+  sourceUrl: string;
+  sourceMimeType: string;
+  generatedUrl: string | null;
+  prompt: string;
+  style?: string;
+  status: "pending" | "generating" | "done" | "error";
+}
+
+// 资源库类型
+export interface LibraryResource {
+  id: string;
+  userId?: string; // 用户ID（如果已登录）
+  name: string; // 资源名称
+  url: string; // 图片 URL（云存储链接）
+  fileId: string; // 云存储文件ID
+  mimeType: string; // 图片 MIME 类型
+  timestamp: number; // 上传时间
+  fileSize?: number; // 文件大小（字节）
 }
 
 // Payment Types
 export enum PaymentMethod {
-  WECHAT = 'WECHAT',
-  ALIPAY = 'ALIPAY'
+  WECHAT = "WECHAT",
+  ALIPAY = "ALIPAY",
 }
 
 export enum PaymentStatus {
-  PENDING = 'PENDING',
-  SUCCESS = 'SUCCESS',
-  FAILED = 'FAILED',
-  CANCELLED = 'CANCELLED'
+  PENDING = "PENDING",
+  NOTPAY = "NOTPAY", // 未支付（微信支付状态）
+  SUCCESS = "SUCCESS",
+  FAILED = "FAILED",
+  CANCELLED = "CANCELLED",
+  CLOSED = "CLOSED", // 已关闭（微信支付状态）
+  REFUND = "REFUND", // 转入退款（微信支付状态）
 }
 
 export interface PaymentOrder {
@@ -81,6 +113,8 @@ export interface CreateOrderRequest {
   productDesc?: string;
   paymentMethod: PaymentMethod;
   userId?: string;
+  planId?: string; // 会员计划ID（BASIC, STANDARD, PREMIUM）
+  isFirstMonth?: boolean; // 是否首月（享受6折优惠）
 }
 
 export interface CreateOrderResponse {
@@ -90,15 +124,18 @@ export interface CreateOrderResponse {
 
 // 微信支付参数
 export interface WechatPaymentParams {
-  appId: string;
-  timeStamp: string;
-  nonceStr: string;
-  package: string; // prepay_id=xxx
-  signType: string;
-  paySign: string;
+  appId?: string; // 微信内 JSAPI 支付需要
+  timeStamp?: string; // 微信内 JSAPI 支付需要
+  nonceStr?: string; // 微信内 JSAPI 支付需要
+  package?: string; // prepay_id=xxx（微信内 JSAPI 支付需要）
+  signType?: string; // 微信内 JSAPI 支付需要
+  paySign?: string; // 微信内 JSAPI 支付需要
+  mwebUrl?: string; // H5 支付地址（移动端非微信环境，跳转到微信收银台）
+  codeUrl?: string; // Native 支付二维码地址（PC 端，用于生成二维码）
 }
 
 // 支付宝支付参数
 export interface AlipayPaymentParams {
-  orderString: string; // 支付宝订单字符串
+  orderString?: string; // 支付宝订单字符串（旧版，已废弃）
+  paymentUrl?: string; // 支付宝支付页面链接（PC端使用）
 }

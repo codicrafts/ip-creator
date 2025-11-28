@@ -9,6 +9,7 @@ import { resetImageState, setResultImage } from '@/store/slices/imageSlice';
 import { setMemeDrafts, setActiveDraftIndex } from '@/store/slices/memeSlice';
 import { AnimationType } from '@/types';
 import Loader from '@/components/Loader';
+import { getProxiedImageUrl } from '@/lib/image-storage';
 
 export default function ResultPage() {
   const router = useRouter();
@@ -59,7 +60,7 @@ export default function ResultPage() {
           <div className="w-full max-w-md md:max-w-2xl lg:max-w-4xl animate-in fade-in zoom-in duration-500">
             <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-violet-900/50 border border-white/10 bg-gray-800">
               <img
-                src={resultImage}
+                src={getProxiedImageUrl(resultImage)}
                 alt="Generated"
                 className="w-full h-auto max-h-[70vh] object-contain"
               />

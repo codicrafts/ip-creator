@@ -8,6 +8,7 @@ export interface UserInfo {
   userTier: UserTier;
   sceneUsage: DailyUsage;
   memeUsage: DailyUsage;
+  membershipExpiresAt?: number | null; // 会员过期时间（时间戳）
 }
 
 /**
@@ -61,6 +62,7 @@ export const getUserInfo = async (userId?: string): Promise<UserInfo> => {
         date: new Date().toLocaleDateString(),
         count: 0,
       },
+      membershipExpiresAt: data.membershipExpiresAt || null,
     };
   } catch (error) {
     console.error("Get user info error:", error);

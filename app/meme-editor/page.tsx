@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   Layers,
@@ -10,10 +10,10 @@ import {
   Wand2,
   Package,
   Loader2,
-  Square,
   Activity,
   RefreshCcw,
   Zap,
+  Sparkles,
 } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import {
@@ -22,7 +22,6 @@ import {
   setActiveDraftIndex,
   setSelectedMoodPack,
   setIsExporting,
-  setExportWithBackground,
 } from "@/store/slices/memeSlice";
 import { updateMemeUsage, setMemeUsage } from "@/store/slices/userSlice";
 import { updateMemeUsage as updateMemeUsageAPI } from "@/services/userService";
@@ -40,7 +39,12 @@ import { AnimationType } from "@/types";
 import Loader from "@/components/Loader";
 import PaymentModal from "@/components/PaymentModal";
 import QuotaModal from "@/components/QuotaModal";
-import { loadMemeDrafts, saveMemeDrafts } from "@/lib/meme-storage";
+import { uploadImageToCloud } from "@/services/imageUploadService";
+import { getProxiedImageUrl } from "@/lib/image-storage";
+import {
+  removeBackground,
+  BackgroundRemovalError,
+} from "@/services/backgroundRemovalService";
 import JSZip from "jszip";
 
 declare global {
@@ -60,9 +64,6 @@ export default function MemeEditorPage() {
     (state) => state.meme.selectedMoodPack
   );
   const isExporting = useAppSelector((state) => state.meme.isExporting);
-  const exportWithBackground = useAppSelector(
-    (state) => state.meme.exportWithBackground
-  );
   const memeUsage = useAppSelector((state) => state.user.memeUsage);
   const userStatus = useAppSelector((state) => state.user.status);
   const userId = useAppSelector((state) => state.user.userId);
@@ -74,31 +75,14 @@ export default function MemeEditorPage() {
     (state) => state.app.isQuotaModalOpen
   );
   const initializedRef = useRef(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  // 页面加载时，如果 Redux 中没有草稿，从 localStorage 恢复
+  // 页面初始化
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-
-    // 如果 Redux 中没有草稿，尝试从 localStorage 加载
-    if (memeDrafts.length === 0) {
-      const saved = loadMemeDrafts();
-      if (saved && saved.drafts.length > 0) {
-        dispatch(setMemeDrafts(saved.drafts));
-        dispatch(setActiveDraftIndex(saved.activeIndex));
-        if (saved.exportWithBackground !== undefined) {
-          dispatch(setExportWithBackground(saved.exportWithBackground));
-        }
-      }
-    }
-  }, [memeDrafts.length, dispatch]);
-
-  // 当 memeDrafts 或 exportWithBackground 更新时，同步到 localStorage
-  useEffect(() => {
-    if (memeDrafts.length > 0) {
-      saveMemeDrafts(memeDrafts, activeDraftIndex, exportWithBackground);
-    }
-  }, [memeDrafts, activeDraftIndex, exportWithBackground]);
+    setIsInitializing(false);
+  }, []);
 
   const activeDraft = memeDrafts[activeDraftIndex];
   const pendingCount = memeDrafts.filter(
@@ -188,14 +172,99 @@ export default function MemeEditorPage() {
       if (draft.status !== "pending" && draft.status !== "error") continue;
 
       try {
-        const resultUrl = await generateSticker(
-          draft.sourceUrl,
-          draft.moodPrompt
-        );
         dispatch(
           updateMemeDraft({
             index: i,
-            draft: { generatedUrl: resultUrl, status: "done" },
+            draft: { status: "generating" },
+          })
+        );
+
+        // 先用原图生成表情包
+        console.log("生成接口使用的图片参数（原图）:", {
+          type: typeof draft.sourceUrl,
+          length: draft.sourceUrl?.length,
+          preview: draft.sourceUrl?.substring(0, 100),
+          isBase64: draft.sourceUrl?.startsWith("data:image"),
+        });
+
+        const generatedImage = await generateSticker(
+          draft.sourceUrl,
+          draft.moodPrompt,
+          {
+            backgroundType: "transparent",
+            removeBackground: false,
+          }
+        );
+
+        console.log("生成接口返回的图片:", {
+          type: typeof generatedImage,
+          length: generatedImage?.length,
+          preview: generatedImage?.substring(0, 100),
+          isBase64: generatedImage?.startsWith("data:image"),
+        });
+
+        // 如果选择抠图，对生成后的图片进行抠图处理
+        let finalImage = generatedImage;
+        if (draft.removeBackground ?? true) {
+          try {
+            const processedImage = await removeBackground(
+              generatedImage,
+              draft.refineForeground ?? false
+            );
+            console.log("抠图接口返回的数据:", {
+              type: typeof processedImage,
+              length: processedImage?.length,
+              preview: processedImage?.substring(0, 100),
+              isBase64: processedImage?.startsWith("data:image"),
+            });
+
+            if (!processedImage) {
+              throw new Error("抠图接口返回的图片为空");
+            }
+
+            finalImage = processedImage;
+            console.log("使用抠图接口处理后的图片作为最终结果");
+          } catch (bgError) {
+            console.error("Background removal failed:", bgError);
+            if (bgError instanceof BackgroundRemovalError) {
+              throw new Error(`背景移除失败: ${bgError.message}`);
+            }
+            throw bgError;
+          }
+        }
+
+        // 上传图片到云存储
+        let cloudImageUrl = finalImage;
+        if (finalImage.startsWith("data:image")) {
+          // 提取 mimeType
+          let detectedMimeType = "image/png";
+          if (finalImage.startsWith("data:image/png")) {
+            detectedMimeType = "image/png";
+          } else if (
+            finalImage.startsWith("data:image/jpeg") ||
+            finalImage.startsWith("data:image/jpg")
+          ) {
+            detectedMimeType = "image/jpeg";
+          } else if (finalImage.startsWith("data:image/webp")) {
+            detectedMimeType = "image/webp";
+          }
+
+          const uploadResult = await uploadImageToCloud(
+            finalImage,
+            undefined,
+            detectedMimeType
+          );
+          if (uploadResult && uploadResult.url) {
+            cloudImageUrl = uploadResult.url;
+          } else {
+            console.warn("Failed to upload image to cloud, using base64 URL");
+          }
+        }
+
+        dispatch(
+          updateMemeDraft({
+            index: i,
+            draft: { generatedUrl: cloudImageUrl, status: "done" },
           })
         );
         // 表情包生成成功，增加使用次数
@@ -211,10 +280,10 @@ export default function MemeEditorPage() {
           }
         }
 
-        // 保存历史记录到数据库
+        // 保存历史记录到数据库（使用云存储链接）
         await saveHistory(
           "meme",
-          resultUrl,
+          cloudImageUrl,
           draft.moodPrompt || draft.text,
           undefined
         );
@@ -246,7 +315,7 @@ export default function MemeEditorPage() {
 
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.src = draft.generatedUrl;
+      img.src = getProxiedImageUrl(draft.generatedUrl);
 
       img.onload = () => {
         ctx.font = "bold 24px sans-serif";
@@ -363,7 +432,7 @@ export default function MemeEditorPage() {
               draft,
               240,
               240,
-              exportWithBackground
+              false // 始终不使用背景色
             );
             const base64Data = gifBase64.split(",")[1];
             zip.file(`sticker_${i + 1}.gif`, base64Data, { base64: true });
@@ -373,16 +442,12 @@ export default function MemeEditorPage() {
         } else {
           const img = new Image();
           img.crossOrigin = "anonymous";
-          img.src = draft.generatedUrl!;
+          img.src = getProxiedImageUrl(draft.generatedUrl!);
 
           await new Promise((resolve) => {
             img.onload = () => {
               ctx.clearRect(0, 0, 240, 240);
-              // 根据选项设置背景色
-              if (exportWithBackground) {
-                ctx.fillStyle = "white";
-                ctx.fillRect(0, 0, 240, 240);
-              }
+              // 不使用背景色，保持透明背景
               const scale = Math.min(240 / img.width, 200 / img.height);
               const w = img.width * scale;
               const h = img.height * scale;
@@ -424,18 +489,51 @@ export default function MemeEditorPage() {
     }
   };
 
-  // 如果没有草稿（且已尝试从 localStorage 加载），显示提示
-  if (!activeDraft || memeDrafts.length === 0) {
+  // 如果还在初始化，显示加载状态
+  if (isInitializing) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center space-y-4">
-          <p className="text-gray-500">未找到表情包草稿</p>
+        <Loader />
+      </div>
+    );
+  }
+
+  // 如果没有草稿，显示空状态
+  if (!activeDraft || memeDrafts.length === 0) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-50 pb-24 md:pt-16">
+        <header className="bg-white px-4 md:hidden py-3 sticky top-0 z-10 shadow-sm border-b border-gray-100 flex items-center justify-between">
           <button
-            onClick={() => router.push("/")}
-            className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+            onClick={() => router.push("/create")}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
-            返回首页
+            <ChevronLeft size={24} className="text-gray-600" />
           </button>
+          <h2 className="font-bold text-lg text-gray-800">表情包工坊</h2>
+          <div className="w-8"></div>
+        </header>
+
+        <div className="flex-1 p-6 md:p-12 flex items-center justify-center max-w-6xl mx-auto w-full">
+          <div className="w-full max-w-md text-center space-y-6">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+              <div className="w-full h-64 flex flex-col items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                <Smile size={64} className="text-gray-300 mb-4" />
+                <p className="text-lg font-semibold text-gray-700 mb-2">
+                  还没有表情包草稿
+                </p>
+                <p className="text-sm text-gray-400 mb-6">
+                  请先上传图片开始制作表情包
+                </p>
+                <button
+                  onClick={() => router.push("/create")}
+                  className="px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium flex items-center gap-2"
+                >
+                  <Smile size={18} />
+                  上传图片
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -478,11 +576,14 @@ export default function MemeEditorPage() {
               <div className="w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 bg-white rounded-lg shadow-xl border-4 border-white relative flex items-center justify-center">
                 <div
                   className={`w-full h-full relative overflow-hidden ${animClass}`}
+                  style={{
+                    backgroundColor: "transparent",
+                  }}
                 >
                   {activeDraft.generatedUrl ? (
                     <>
                       <img
-                        src={activeDraft.generatedUrl}
+                        src={getProxiedImageUrl(activeDraft.generatedUrl)}
                         className="w-full h-full object-contain p-4"
                       />
                       <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
@@ -500,7 +601,7 @@ export default function MemeEditorPage() {
                   ) : (
                     <div className="text-center p-4 opacity-50">
                       <img
-                        src={activeDraft.sourceUrl}
+                        src={getProxiedImageUrl(activeDraft.sourceUrl)}
                         className="w-full h-full object-contain opacity-30 blur-sm"
                       />
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -530,7 +631,9 @@ export default function MemeEditorPage() {
                       }`}
                     >
                       <img
-                        src={draft.generatedUrl || draft.sourceUrl}
+                        src={getProxiedImageUrl(
+                          draft.generatedUrl || draft.sourceUrl
+                        )}
                         className="w-full h-full object-cover"
                       />
                       {draft.status === "done" && (
@@ -636,6 +739,65 @@ export default function MemeEditorPage() {
                 className="w-full p-4 rounded-2xl border border-gray-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-gray-700 shadow-sm text-sm"
               />
             </div>
+
+            {/* 抠图开关 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <Layers size={16} className="text-violet-500" /> 抠图
+                  </label>
+                  <span className="text-xs text-gray-400">移除背景</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={activeDraft.removeBackground ?? true}
+                    onChange={(e) => {
+                      dispatch(
+                        updateMemeDraft({
+                          index: activeDraftIndex,
+                          draft: { removeBackground: e.target.checked },
+                        })
+                      );
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+                </label>
+              </div>
+
+              {/* 精炼边缘开关 */}
+              {activeDraft.removeBackground && (
+                <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <Sparkles size={16} className="text-violet-500" />{" "}
+                      精炼边缘
+                    </label>
+                    <span className="text-xs text-gray-400">
+                      更高质量，但更慢
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={activeDraft.refineForeground ?? false}
+                      onChange={(e) => {
+                        dispatch(
+                          updateMemeDraft({
+                            index: activeDraftIndex,
+                            draft: { refineForeground: e.target.checked },
+                          })
+                        );
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -670,25 +832,6 @@ export default function MemeEditorPage() {
           </>
         ) : (
           <div className="space-y-3">
-            {/* 背景色选项 */}
-            <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">
-                  导出时保留背景色
-                </span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={exportWithBackground}
-                  onChange={(e) =>
-                    dispatch(setExportWithBackground(e.target.checked))
-                  }
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
-              </label>
-            </div>
             <button
               onClick={exportWeChatPackage}
               disabled={isExporting || !allCompleted}
@@ -724,9 +867,6 @@ export default function MemeEditorPage() {
           dispatch(setUserTier(UserTier.PREMIUM));
           dispatch(setIsPaymentModalOpen(false));
         }}
-        amount={29.9}
-        productName="IP 创想坊会员"
-        productDesc="解锁每日 50 次场景扩展和 50 次表情包制作额度"
       />
 
       {/* Quota Modal */}

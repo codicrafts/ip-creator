@@ -3,27 +3,45 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, PlusCircle, User, Wand2 } from 'lucide-react';
+import { Home, PlusCircle, User, Wand2, Clock, FolderOpen } from 'lucide-react';
+import { useAppSelector } from '@/store/hooks';
 
 const TabBar: React.FC = () => {
   const pathname = usePathname();
+  const userStatus = useAppSelector((state) => state.user.status);
+  const isLoggedIn = userStatus === 'LOGGED_IN';
+  
   const isHome = pathname === '/';
   const isCreate = pathname === '/create' || pathname === '/upload';
   const isProfile = pathname === '/profile' || pathname === '/me';
+  const isHistory = pathname === '/history';
+  const isLibrary = pathname === '/library';
 
   return (
     <>
       {/* Mobile Bottom TabBar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe-area shadow-lg z-50 h-16 flex items-center justify-around px-6 md:hidden">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe-area shadow-lg z-50 h-16 flex items-center justify-around px-4 md:hidden">
         <Link
           href="/"
           className={`flex flex-col items-center justify-center space-y-1 ${
             isHome ? 'text-violet-600' : 'text-gray-400'
           }`}
         >
-          <Home size={24} strokeWidth={isHome ? 2.5 : 2} />
+          <Home size={22} strokeWidth={isHome ? 2.5 : 2} />
           <span className="text-[10px] font-medium">首页</span>
         </Link>
+
+        {isLoggedIn && (
+          <Link
+            href="/library"
+            className={`flex flex-col items-center justify-center space-y-1 ${
+              isLibrary ? 'text-violet-600' : 'text-gray-400'
+            }`}
+          >
+            <FolderOpen size={22} strokeWidth={isLibrary ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">资源库</span>
+          </Link>
+        )}
 
         <Link
           href="/create"
@@ -35,13 +53,25 @@ const TabBar: React.FC = () => {
           <span className="text-[10px] font-medium text-gray-600 mt-1">创作</span>
         </Link>
 
+        {isLoggedIn && (
+          <Link
+            href="/history"
+            className={`flex flex-col items-center justify-center space-y-1 ${
+              isHistory ? 'text-violet-600' : 'text-gray-400'
+            }`}
+          >
+            <Clock size={22} strokeWidth={isHistory ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">历史</span>
+          </Link>
+        )}
+
         <Link
           href="/profile"
           className={`flex flex-col items-center justify-center space-y-1 ${
             isProfile ? 'text-violet-600' : 'text-gray-400'
           }`}
         >
-          <User size={24} strokeWidth={isProfile ? 2.5 : 2} />
+          <User size={22} strokeWidth={isProfile ? 2.5 : 2} />
           <span className="text-[10px] font-medium">我的</span>
         </Link>
       </div>
@@ -81,6 +111,38 @@ const TabBar: React.FC = () => {
               <span>创作</span>
             </div>
           </Link>
+
+          {isLoggedIn && (
+            <Link
+              href="/library"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isLibrary
+                  ? 'bg-violet-50 text-violet-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <FolderOpen size={18} />
+                <span>资源库</span>
+              </div>
+            </Link>
+          )}
+
+          {isLoggedIn && (
+            <Link
+              href="/history"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isHistory
+                  ? 'bg-violet-50 text-violet-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Clock size={18} />
+                <span>历史</span>
+              </div>
+            </Link>
+          )}
 
           <Link
             href="/profile"

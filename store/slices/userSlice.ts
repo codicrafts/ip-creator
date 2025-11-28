@@ -1,9 +1,9 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { UserTier, DailyUsage } from '@/types';
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { UserTier, DailyUsage } from "@/types";
 
 export enum UserStatus {
-  GUEST = 'GUEST', // 游客
-  LOGGED_IN = 'LOGGED_IN', // 已登录
+  GUEST = "GUEST", // 游客
+  LOGGED_IN = "LOGGED_IN", // 已登录
 }
 
 export interface UserState {
@@ -13,6 +13,7 @@ export interface UserState {
   userTier: UserTier;
   sceneUsage: DailyUsage; // 场景扩展使用量
   memeUsage: DailyUsage; // 表情包制作使用量
+  membershipExpiresAt: number | null; // 会员过期时间（时间戳）
 }
 
 const initialState: UserState = {
@@ -22,10 +23,11 @@ const initialState: UserState = {
   userTier: UserTier.FREE,
   sceneUsage: { date: new Date().toLocaleDateString(), count: 0 },
   memeUsage: { date: new Date().toLocaleDateString(), count: 0 },
+  membershipExpiresAt: null,
 };
 
 const userSlice = createSlice({
-  name: 'user',
+  name: "user",
   initialState,
   reducers: {
     setUserStatus: (state, action: PayloadAction<UserStatus>) => {
@@ -40,11 +42,23 @@ const userSlice = createSlice({
     setUserTier: (state, action: PayloadAction<UserTier>) => {
       state.userTier = action.payload;
     },
-    setUserInfo: (state, action: PayloadAction<{ userId: string; phone: string; userTier: UserTier }>) => {
+    setUserInfo: (
+      state,
+      action: PayloadAction<{
+        userId: string;
+        phone: string;
+        userTier: UserTier;
+        membershipExpiresAt?: number | null;
+      }>
+    ) => {
       state.userId = action.payload.userId;
       state.phone = action.payload.phone;
       state.userTier = action.payload.userTier;
+      state.membershipExpiresAt = action.payload.membershipExpiresAt || null;
       state.status = UserStatus.LOGGED_IN;
+    },
+    setMembershipExpiresAt: (state, action: PayloadAction<number | null>) => {
+      state.membershipExpiresAt = action.payload;
     },
     clearUserInfo: (state) => {
       state.status = UserStatus.GUEST;
@@ -53,6 +67,7 @@ const userSlice = createSlice({
       state.userTier = UserTier.FREE;
       state.sceneUsage = { date: new Date().toLocaleDateString(), count: 0 };
       state.memeUsage = { date: new Date().toLocaleDateString(), count: 0 };
+      state.membershipExpiresAt = null;
     },
     setSceneUsage: (state, action: PayloadAction<DailyUsage>) => {
       state.sceneUsage = action.payload;
@@ -107,6 +122,7 @@ export const {
   setUserPhone,
   setUserTier,
   setUserInfo,
+  setMembershipExpiresAt,
   clearUserInfo,
   setSceneUsage,
   setMemeUsage,
@@ -118,4 +134,3 @@ export const {
 } = userSlice.actions;
 
 export default userSlice.reducer;
-
