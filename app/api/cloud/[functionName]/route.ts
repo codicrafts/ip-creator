@@ -1286,9 +1286,7 @@ async function handlePayment(body: any, db: any, request?: NextRequest) {
       const ALIPAY_APPID = process.env.ALIPAY_APPID || "";
       const ALIPAY_PRIVATE_KEY = process.env.ALIPAY_PRIVATE_KEY || "";
       const ALIPAY_PUBLIC_KEY = process.env.ALIPAY_PUBLIC_KEY || "";
-      const ALIPAY_NOTIFY_URL =
-        process.env.ALIPAY_NOTIFY_URL ||
-        "https://your-domain.com/api/payment/alipay/notify";
+      const ALIPAY_NOTIFY_URL = process.env.ALIPAY_NOTIFY_URL;
       const ALIPAY_RETURN_URL =
         redirectUrl || "https://your-domain.com/profile";
       const ALIPAY_GATEWAY =
