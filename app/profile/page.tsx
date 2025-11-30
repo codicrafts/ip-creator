@@ -18,6 +18,7 @@ import { UserTier } from "@/types";
 import PaymentModal from "@/components/PaymentModal";
 import { getMembershipPlan, getPaidMembershipPlans } from "@/lib/membership";
 import MembershipPlans from "@/components/MembershipPlans";
+import { isFeatureDisabled } from "@/lib/feature-flags";
 
 const FREE_DAILY_LIMIT = 5; // 免费用户每日限制
 
@@ -48,6 +49,7 @@ export default function ProfilePage() {
   const [preselectedPlan, setPreselectedPlan] = useState<UserTier | undefined>(
     undefined
   );
+  const featureDisabled = isFeatureDisabled();
 
   // 页面加载时刷新用户信息（特别是从支付成功页面跳转过来时）
   useEffect(() => {

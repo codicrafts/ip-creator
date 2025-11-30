@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   Upload,
   X,
@@ -33,12 +33,14 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { AnimationType, LibraryResource } from "@/types";
 import Loader from "@/components/Loader";
 import ConfirmModal from "@/components/ConfirmModal";
+import { isFeatureDisabled } from "@/lib/feature-flags";
 
 export default function LibraryPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const userId = useAppSelector((state) => state.user.userId);
   const userStatus = useAppSelector((state) => state.user.status);
+  const featureDisabled = isFeatureDisabled();
   const [resources, setResources] = useState<LibraryResource[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -47,28 +49,79 @@ export default function LibraryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isBatchDeleteConfirmOpen, setIsBatchDeleteConfirmOpen] = useState(false);
+  const [isBatchDeleteConfirmOpen, setIsBatchDeleteConfirmOpen] =
+    useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const loadingRef = useRef(false);
+  const [imageLoadingStates, setImageLoadingStates] = useState<
+    Record<string, boolean>
+  >({});
+
+  // 清理不在列表中的图片的加载状态
+  useEffect(() => {
+    const currentIds = new Set(resources.map((resource) => resource.id));
+    setImageLoadingStates((prev) => {
+      const filtered: Record<string, boolean> = {};
+      Object.keys(prev).forEach((id) => {
+        if (currentIds.has(id)) {
+          filtered[id] = prev[id];
+        }
+      });
+      return filtered;
+    });
+  }, [resources]);
+  const lastLoadParamsRef = useRef<{
+    userId: string | null;
+    userStatus: string;
+  } | null>(null);
 
   // 加载资源
-  useEffect(() => {
-    loadResources();
-  }, [userId, userStatus]);
+  const loadResources = useCallback(async () => {
+    const currentParams = {
+      userId: userStatus === "LOGGED_IN" && userId ? userId : null,
+      userStatus,
+    };
 
-  const loadResources = async () => {
+    // 如果参数没有变化且正在加载，则跳过
+    if (
+      loadingRef.current &&
+      lastLoadParamsRef.current &&
+      lastLoadParamsRef.current.userId === currentParams.userId &&
+      lastLoadParamsRef.current.userStatus === currentParams.userStatus
+    ) {
+      return;
+    }
+
+    // 如果参数没有变化且已经加载过，则跳过（避免重复加载相同数据）
+    if (
+      !loadingRef.current &&
+      lastLoadParamsRef.current &&
+      lastLoadParamsRef.current.userId === currentParams.userId &&
+      lastLoadParamsRef.current.userStatus === currentParams.userStatus
+    ) {
+      return;
+    }
+
+    loadingRef.current = true;
+    lastLoadParamsRef.current = currentParams;
     setIsLoading(true);
     try {
       const loaded = await getLibraryResources(
-        userStatus === "LOGGED_IN" && userId ? userId : undefined
+        currentParams.userId || undefined
       );
       setResources(loaded);
     } catch (error) {
       console.error("Failed to load resources:", error);
     } finally {
       setIsLoading(false);
+      loadingRef.current = false;
     }
-  };
+  }, [userId, userStatus]);
+
+  useEffect(() => {
+    loadResources();
+  }, [loadResources]);
 
   // 处理文件上传
   const handleFileUpload = async (
@@ -150,7 +203,9 @@ export default function LibraryPage() {
       );
       if (success) {
         await loadResources();
-        setSelectedIds(selectedIds.filter((selectedId) => selectedId !== pendingDeleteId));
+        setSelectedIds(
+          selectedIds.filter((selectedId) => selectedId !== pendingDeleteId)
+        );
       } else {
         alert("删除失败，请重试");
       }
@@ -411,84 +466,99 @@ export default function LibraryPage() {
 
         {/* Content */}
         <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-          {/* 上传区域 */}
-          <div
-            onClick={() => !isUploading && fileInputRef.current?.click()}
-            className={`bg-white border-2 border-dashed border-violet-200 rounded-2xl p-8 md:p-12 flex flex-col items-center justify-center space-y-4 transition-all mb-6 ${
-              isUploading
-                ? "opacity-50 cursor-not-allowed"
-                : "cursor-pointer hover:bg-violet-50 hover:border-violet-400"
-            }`}
-          >
-            <div className="bg-violet-100 p-4 rounded-full">
-              {isUploading ? (
-                <Loader />
-              ) : (
-                <Upload size={32} className="text-violet-600" />
-              )}
-            </div>
-            <div className="text-center space-y-2">
-              <p className="font-semibold text-gray-700">
-                {isUploading ? "上传中..." : "上传资源图片"}
-              </p>
-              <p className="text-xs text-gray-400">支持 JPG, PNG (最大 5MB)</p>
-            </div>
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept="image/png, image/jpeg, image/webp"
-              onChange={handleFileUpload}
-              disabled={isUploading}
-            />
-          </div>
-
-          {/* 资源列表 */}
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader />
-            </div>
-          ) : resources.length === 0 ? (
-            <div className="text-center py-12">
-              <ImageIcon size={48} className="mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-500">
-                还没有资源，上传一些图片开始使用吧
-              </p>
+          {featureDisabled ? (
+            <div className="bg-white rounded-2xl p-12 md:p-16 flex flex-col items-center justify-center text-center space-y-4 border border-gray-100">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <ImageIcon size={32} className="text-gray-400" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800">资源库</h3>
+              <p className="text-gray-500 max-w-md">功能调试中，敬请期待</p>
+              <div className="mt-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
+                待开放
+              </div>
             </div>
           ) : (
             <>
-              {/* 批量操作栏 */}
-              {isSelectionMode && selectedIds.length > 0 && (
-                <div className="fixed bottom-20 left-0 right-0 bg-violet-600 text-white p-4 md:bottom-4 md:left-auto md:right-4 md:rounded-2xl md:max-w-md md:shadow-lg z-40">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-medium">
-                      已选择 {selectedIds.length} 个资源
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleBatchUseForScene}
-                        className="px-3 py-1.5 bg-white text-violet-600 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
-                      >
-                        <Sparkles size={14} />
-                        场景扩展
-                      </button>
-                      <button
-                        onClick={handleBatchUseForMeme}
-                        className="px-3 py-1.5 bg-white text-violet-600 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
-                      >
-                        <Smile size={14} />
-                        表情包
-                      </button>
-                    </div>
-                  </div>
+              {/* 上传区域 */}
+              <div
+                onClick={() => !isUploading && fileInputRef.current?.click()}
+                className={`bg-white border-2 border-dashed border-violet-200 rounded-2xl p-8 md:p-12 flex flex-col items-center justify-center space-y-4 transition-all mb-6 ${
+                  isUploading
+                    ? "opacity-50 cursor-not-allowed"
+                    : "cursor-pointer hover:bg-violet-50 hover:border-violet-400"
+                }`}
+              >
+                <div className="bg-violet-100 p-4 rounded-full">
+                  {isUploading ? (
+                    <Loader />
+                  ) : (
+                    <Upload size={32} className="text-violet-600" />
+                  )}
                 </div>
-              )}
+                <div className="text-center space-y-2">
+                  <p className="font-semibold text-gray-700">
+                    {isUploading ? "上传中..." : "上传资源图片"}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    支持 JPG, PNG (最大 5MB)
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/png, image/jpeg, image/webp"
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                />
+              </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {resources.map((resource) => (
-                  <div
-                    key={resource.id}
-                    className={`
+              {/* 资源列表 */}
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader />
+                </div>
+              ) : resources.length === 0 ? (
+                <div className="text-center py-12">
+                  <ImageIcon size={48} className="mx-auto text-gray-300 mb-4" />
+                  <p className="text-gray-500">
+                    还没有资源，上传一些图片开始使用吧
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* 批量操作栏 */}
+                  {isSelectionMode && selectedIds.length > 0 && (
+                    <div className="fixed bottom-20 left-0 right-0 bg-violet-600 text-white p-4 md:bottom-4 md:left-auto md:right-4 md:rounded-2xl md:max-w-md md:shadow-lg z-40">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="font-medium">
+                          已选择 {selectedIds.length} 个资源
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleBatchUseForScene}
+                            className="px-3 py-1.5 bg-white text-violet-600 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
+                          >
+                            <Sparkles size={14} />
+                            场景扩展
+                          </button>
+                          <button
+                            onClick={handleBatchUseForMeme}
+                            className="px-3 py-1.5 bg-white text-violet-600 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center gap-1"
+                          >
+                            <Smile size={14} />
+                            表情包
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {resources.map((resource) => (
+                      <div
+                        key={resource.id}
+                        className={`
                       bg-white rounded-xl overflow-hidden shadow-sm border flex flex-col transition-all group relative
                       ${
                         isSelectionMode && selectedIds.includes(resource.id)
@@ -496,18 +566,18 @@ export default function LibraryPage() {
                           : "border-gray-100"
                       }
                     `}
-                  >
-                    {/* 选择框 */}
-                    {isSelectionMode && (
-                      <div
-                        className="absolute top-2 left-2 z-10"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleResourceSelection(resource.id);
-                        }}
                       >
-                        <div
-                          className={`
+                        {/* 选择框 */}
+                        {isSelectionMode && (
+                          <div
+                            className="absolute top-2 left-2 z-10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleResourceSelection(resource.id);
+                            }}
+                          >
+                            <div
+                              className={`
                             w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all
                             ${
                               selectedIds.includes(resource.id)
@@ -515,119 +585,149 @@ export default function LibraryPage() {
                                 : "bg-white border-gray-300"
                             }
                           `}
-                        >
-                          {selectedIds.includes(resource.id) && (
-                            <Check size={16} className="text-white" />
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 图片 */}
-                    <div className="relative aspect-square bg-gray-100 overflow-hidden">
-                      <img
-                        src={getProxiedImageUrl(resource.url)}
-                        alt={resource.name}
-                        className="w-full h-full object-cover"
-                      />
-                      {!isSelectionMode && (
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUseForScene(resource);
-                              }}
-                              className="p-2 bg-white rounded-lg shadow-lg hover:bg-gray-100 transition-colors"
-                              title="场景扩展"
                             >
-                              <Sparkles size={18} className="text-violet-600" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUseForMeme(resource);
-                              }}
-                              className="p-2 bg-white rounded-lg shadow-lg hover:bg-gray-100 transition-colors"
-                              title="表情包制作"
-                            >
-                              <Smile size={18} className="text-violet-600" />
-                            </button>
+                              {selectedIds.includes(resource.id) && (
+                                <Check size={16} className="text-white" />
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
 
-                    {/* 资源名称 */}
-                    <div className="p-3">
-                      {editingId === resource.id ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            value={editingName}
-                            onChange={(e) => setEditingName(e.target.value)}
-                            onBlur={() => saveEditName(resource.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                saveEditName(resource.id);
-                              } else if (e.key === "Escape") {
-                                cancelEdit();
-                              }
+                        {/* 图片 */}
+                        <div className="relative aspect-square bg-gray-100 overflow-hidden">
+                          {/* 加载占位符 */}
+                          {imageLoadingStates[resource.id] !== false && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 animate-pulse">
+                              <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin"></div>
+                            </div>
+                          )}
+                          <img
+                            src={getProxiedImageUrl(resource.url)}
+                            alt={resource.name}
+                            className={`w-full h-full object-cover transition-opacity duration-300 ${
+                              imageLoadingStates[resource.id] === false
+                                ? "opacity-100"
+                                : "opacity-0"
+                            }`}
+                            onLoad={() => {
+                              setImageLoadingStates((prev) => ({
+                                ...prev,
+                                [resource.id]: false,
+                              }));
                             }}
-                            className="flex-1 text-sm border border-violet-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                            autoFocus
+                            onError={() => {
+                              setImageLoadingStates((prev) => ({
+                                ...prev,
+                                [resource.id]: false,
+                              }));
+                            }}
                           />
-                          <button
-                            onClick={() => saveEditName(resource.id)}
-                            className="p-1 text-violet-600 hover:bg-violet-50 rounded"
-                          >
-                            <Check size={16} />
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            className="p-1 text-gray-400 hover:bg-gray-100 rounded"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-2">
-                          <p
-                            className="text-sm font-medium text-gray-800 truncate flex-1"
-                            title={resource.name}
-                          >
-                            {resource.name}
-                          </p>
                           {!isSelectionMode && (
-                            <div className="flex gap-1">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startEditName(resource);
-                                }}
-                                className="p-1 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
-                                title="重命名"
-                              >
-                                <Edit2 size={14} />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDelete(resource.id);
-                                }}
-                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                                title="删除"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUseForScene(resource);
+                                  }}
+                                  className="p-2 bg-white rounded-lg shadow-lg hover:bg-gray-100 transition-colors"
+                                  title="场景扩展"
+                                >
+                                  <Sparkles
+                                    size={18}
+                                    className="text-violet-600"
+                                  />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUseForMeme(resource);
+                                  }}
+                                  className="p-2 bg-white rounded-lg shadow-lg hover:bg-gray-100 transition-colors"
+                                  title="表情包制作"
+                                >
+                                  <Smile
+                                    size={18}
+                                    className="text-violet-600"
+                                  />
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
+
+                        {/* 资源名称 */}
+                        <div className="p-3">
+                          {editingId === resource.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={editingName}
+                                onChange={(e) => setEditingName(e.target.value)}
+                                onBlur={() => saveEditName(resource.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    saveEditName(resource.id);
+                                  } else if (e.key === "Escape") {
+                                    cancelEdit();
+                                  }
+                                }}
+                                className="flex-1 text-sm border border-violet-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => saveEditName(resource.id)}
+                                className="p-1 text-violet-600 hover:bg-violet-50 rounded"
+                              >
+                                <Check size={16} />
+                              </button>
+                              <button
+                                onClick={cancelEdit}
+                                className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2">
+                              <p
+                                className="text-sm font-medium text-gray-800 truncate flex-1"
+                                title={resource.name}
+                              >
+                                {resource.name}
+                              </p>
+                              {!isSelectionMode && (
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      startEditName(resource);
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
+                                    title="重命名"
+                                  >
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDelete(resource.id);
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                    title="删除"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
             </>
           )}
         </div>

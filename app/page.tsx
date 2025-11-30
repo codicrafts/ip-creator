@@ -1,16 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Wand2, Sparkles, Smile, ChevronRight } from "lucide-react";
+import { Wand2, Sparkles, Smile, ChevronRight, Lock } from "lucide-react";
 import { useRef } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setMemeDrafts, setActiveDraftIndex } from "@/store/slices/memeSlice";
 import { AnimationType } from "@/types";
+import { isFeatureDisabled } from "@/lib/feature-flags";
 
 export default function HomePage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const featureDisabled = isFeatureDisabled();
 
   const triggerFileInput = () => {
     fileInputRef.current?.click();
@@ -53,9 +55,14 @@ export default function HomePage() {
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-3xl md:text-5xl font-bold text-gray-900 tracking-tight">
-            IP 创想坊
-          </h1>
+          <div className="relative inline-block">
+            <h1 className="text-3xl md:text-5xl font-bold text-gray-900 tracking-tight">
+              IP 创想坊
+            </h1>
+            <span className="absolute -top-2 -right-8 md:-right-12 bg-gradient-to-r from-violet-500 to-violet-600 text-white text-[10px] md:text-xs font-bold px-2 md:px-2.5 py-0.5 md:py-1 rounded-full shadow-lg shadow-violet-200">
+              Beta
+            </span>
+          </div>
           <p className="text-gray-500 max-w-xs md:max-w-md mx-auto leading-relaxed text-sm md:text-base">
             AI 赋能创意，一键生成场景与表情包
           </p>
@@ -64,39 +71,79 @@ export default function HomePage() {
         <div className="w-full max-w-xs md:max-w-md space-y-4 md:space-y-6">
           {/* Main Action */}
           <button
-            onClick={() => router.push("/create")}
-            className="group relative w-full bg-violet-600 text-white px-8 py-4 rounded-2xl font-semibold shadow-lg shadow-violet-200 active:scale-95 transition-all overflow-hidden flex items-center justify-between"
+            onClick={() => !featureDisabled && router.push("/create")}
+            disabled={featureDisabled}
+            className={`group relative w-full px-8 py-4 rounded-2xl font-semibold shadow-lg active:scale-95 transition-all overflow-hidden flex items-center justify-between ${
+              featureDisabled
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-violet-600 text-white shadow-violet-200"
+            }`}
           >
-            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+            {!featureDisabled && (
+              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+            )}
             <div className="flex items-center gap-3 relative z-10">
-              <div className="p-2 bg-white/20 rounded-lg">
+              <div
+                className={`p-2 rounded-lg ${
+                  featureDisabled ? "bg-gray-200" : "bg-white/20"
+                }`}
+              >
                 <Sparkles size={20} />
               </div>
               <div className="text-left">
                 <div className="text-sm font-bold">场景扩展</div>
-                <div className="text-[10px] opacity-80">换背景 / 讲故事</div>
+                <div
+                  className={`text-[10px] ${
+                    featureDisabled ? "text-gray-400" : "opacity-80"
+                  }`}
+                >
+                  {featureDisabled ? "待开放" : "换背景 / 讲故事"}
+                </div>
               </div>
             </div>
-            <ChevronRight size={20} className="relative z-10 opacity-60" />
+            {featureDisabled ? (
+              <Lock size={20} className="relative z-10 opacity-50" />
+            ) : (
+              <ChevronRight size={20} className="relative z-10 opacity-60" />
+            )}
           </button>
 
           {/* Meme Action */}
           <button
-            onClick={triggerFileInput}
-            className="group relative w-full bg-white text-gray-800 px-8 py-4 rounded-2xl font-semibold shadow-md border border-gray-100 active:scale-95 transition-all flex items-center justify-between hover:border-amber-200"
+            onClick={() => !featureDisabled && triggerFileInput()}
+            disabled={featureDisabled}
+            className={`group relative w-full px-8 py-4 rounded-2xl font-semibold shadow-md border active:scale-95 transition-all flex items-center justify-between ${
+              featureDisabled
+                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                : "bg-white text-gray-800 border-gray-100 hover:border-amber-200"
+            }`}
           >
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+              <div
+                className={`p-2 rounded-lg ${
+                  featureDisabled
+                    ? "bg-gray-200 text-gray-400"
+                    : "bg-amber-100 text-amber-600"
+                }`}
+              >
                 <Smile size={20} />
               </div>
               <div className="text-left">
                 <div className="text-sm font-bold">表情包制作</div>
-                <div className="text-[10px] text-gray-400">
-                  转贴纸 / 批量生成
+                <div
+                  className={`text-[10px] ${
+                    featureDisabled ? "text-gray-400" : "text-gray-400"
+                  }`}
+                >
+                  {featureDisabled ? "待开放" : "转贴纸 / 批量生成"}
                 </div>
               </div>
             </div>
-            <ChevronRight size={20} className="text-gray-300" />
+            {featureDisabled ? (
+              <Lock size={20} className="text-gray-300" />
+            ) : (
+              <ChevronRight size={20} className="text-gray-300" />
+            )}
           </button>
         </div>
 

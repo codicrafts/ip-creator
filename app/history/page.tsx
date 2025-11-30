@@ -23,6 +23,7 @@ import { deleteHistory, getHistory } from "@/services/historyService";
 import TabBarWrapper from "@/app/components/TabBarWrapper";
 import { getProxiedImageUrl } from "@/lib/image-storage";
 import ConfirmModal from "@/components/ConfirmModal";
+import Loader from "@/components/Loader";
 
 export default function HistoryPage() {
   const router = useRouter();
@@ -44,13 +45,40 @@ export default function HistoryPage() {
   const [isSingleDeleteConfirmOpen, setIsSingleDeleteConfirmOpen] =
     useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [imageLoadingStates, setImageLoadingStates] = useState<
+    Record<string, boolean>
+  >({});
+  const [isViewerImageLoading, setIsViewerImageLoading] = useState(true);
+
+  // 当查看的图片变化时，重置加载状态
+  useEffect(() => {
+    if (viewingHistoryItem) {
+      setIsViewerImageLoading(true);
+    }
+  }, [viewingHistoryItem?.id]);
+
+  // 清理不在列表中的图片的加载状态
+  useEffect(() => {
+    const currentIds = new Set(history.map((item) => item.id));
+    setImageLoadingStates((prev) => {
+      const filtered: Record<string, boolean> = {};
+      Object.keys(prev).forEach((id) => {
+        if (currentIds.has(id)) {
+          filtered[id] = prev[id];
+        }
+      });
+      return filtered;
+    });
+  }, [history]);
 
   // 加载历史记录
   useEffect(() => {
     const loadHistory = async () => {
-      // 如果用户已登录，尝试从服务器加载历史记录
-      if (userStatus === "LOGGED_IN" && userId) {
-        try {
+      setIsLoading(true);
+      try {
+        // 如果用户已登录，尝试从服务器加载历史记录
+        if (userStatus === "LOGGED_IN" && userId) {
           const historyData = await getHistory(userId);
 
           // 确保数据格式正确（转换为 GeneratedImage 格式）
@@ -68,9 +96,11 @@ export default function HistoryPage() {
           if (formattedHistory.length > 0) {
             dispatch(setHistory(formattedHistory));
           }
-        } catch (error) {
-          console.error("Failed to load history:", error);
         }
+      } catch (error) {
+        console.error("Failed to load history:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -155,7 +185,11 @@ export default function HistoryPage() {
           </div>
 
           {/* History List */}
-          {history.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader message="正在加载历史记录..." />
+            </div>
+          ) : history.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 border border-gray-100 flex flex-col items-center justify-center text-gray-400 space-y-4">
               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
                 <ImageIcon size={24} className="text-gray-300" />
@@ -192,12 +226,32 @@ export default function HistoryPage() {
                     `}
                   >
                     <div className="relative aspect-square bg-gray-100 overflow-hidden">
+                      {/* 加载占位符 */}
+                      {imageLoadingStates[item.id] !== false && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 animate-pulse">
+                          <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin"></div>
+                        </div>
+                      )}
                       <img
                         src={getProxiedImageUrl(item.url || "")}
                         alt={item.prompt || "History"}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${
+                          imageLoadingStates[item.id] === false
+                            ? "opacity-100"
+                            : "opacity-0"
+                        }`}
+                        onLoad={() => {
+                          setImageLoadingStates((prev) => ({
+                            ...prev,
+                            [item.id]: false,
+                          }));
+                        }}
                         onError={(e) => {
                           // 图片加载失败时显示占位符
+                          setImageLoadingStates((prev) => ({
+                            ...prev,
+                            [item.id]: false,
+                          }));
                           (e.target as HTMLImageElement).src =
                             'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="14" dy="10.5" font-weight="bold" x="50%" y="50%" text-anchor="middle"%3E图片加载失败%3C/text%3E%3C/svg%3E';
                         }}
@@ -259,17 +313,39 @@ export default function HistoryPage() {
           {viewingHistoryItem && (
             <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/95 backdrop-blur-sm p-4 animate-in fade-in duration-200">
               <button
-                onClick={() => dispatch(setViewingHistoryItem(null))}
+                onClick={() => {
+                  dispatch(setViewingHistoryItem(null));
+                  setIsViewerImageLoading(true);
+                }}
                 className="absolute top-4 right-4 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors"
               >
                 <X size={24} />
               </button>
 
               <div className="w-full max-w-lg md:max-w-4xl flex flex-col gap-6">
-                <img
-                  src={getProxiedImageUrl(viewingHistoryItem.url)}
-                  className="w-full h-auto max-h-[60vh] md:max-h-[80vh] object-contain rounded-lg shadow-2xl shadow-violet-900/20"
-                />
+                <div className="relative w-full flex items-center justify-center">
+                  {/* 加载占位符 */}
+                  {isViewerImageLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
+                        <p className="text-white/60 text-sm">加载中...</p>
+                      </div>
+                    </div>
+                  )}
+                  <img
+                    src={getProxiedImageUrl(viewingHistoryItem.url)}
+                    className={`w-full h-auto max-h-[60vh] md:max-h-[80vh] object-contain rounded-lg shadow-2xl shadow-violet-900/20 transition-opacity duration-300 ${
+                      isViewerImageLoading ? "opacity-0" : "opacity-100"
+                    }`}
+                    onLoad={() => {
+                      setIsViewerImageLoading(false);
+                    }}
+                    onError={() => {
+                      setIsViewerImageLoading(false);
+                    }}
+                  />
+                </div>
 
                 <div className="space-y-4 px-2">
                   <div className="text-white/80 space-y-1">
