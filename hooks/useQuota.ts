@@ -1,14 +1,15 @@
 import { useAppSelector } from "@/store/hooks";
 import { UserTier } from "@/types";
+import { UserStatus } from "@/store/slices/userSlice";
 import { getTodayDateString, normalizeDateString } from "@/lib/date-utils";
+import { getMembershipPlan } from "@/lib/membership";
 
 const GUEST_DAILY_LIMIT = 1;
 const FREE_DAILY_LIMIT = 5;
-const PREMIUM_DAILY_LIMIT = 50;
-const VIP_DAILY_LIMIT = 200;
 
 export function useQuota(type: "scene" | "meme") {
   const userTier = useAppSelector((state) => state.user.userTier);
+  const userStatus = useAppSelector((state) => state.user.status);
   const sceneUsage = useAppSelector((state) => state.user.sceneUsage);
   const memeUsage = useAppSelector((state) => state.user.memeUsage);
 
@@ -18,10 +19,14 @@ export function useQuota(type: "scene" | "meme") {
   const normalizedUsageDate = normalizeDateString(usage.date);
 
   const getLimit = (): number => {
-    if (userTier === UserTier.GUEST) return GUEST_DAILY_LIMIT;
+    if (userStatus === UserStatus.GUEST) return GUEST_DAILY_LIMIT;
     if (userTier === UserTier.FREE) return FREE_DAILY_LIMIT;
-    if (userTier === UserTier.PREMIUM) return PREMIUM_DAILY_LIMIT;
-    if (userTier === UserTier.VIP) return VIP_DAILY_LIMIT;
+
+    const plan = getMembershipPlan(userTier);
+    if (plan) {
+      return type === "scene" ? plan.sceneQuota : plan.memeQuota;
+    }
+
     return FREE_DAILY_LIMIT;
   };
 
@@ -44,4 +49,3 @@ export function useQuota(type: "scene" | "meme") {
     date: usage.date,
   };
 }
-

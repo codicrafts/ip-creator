@@ -371,7 +371,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 p-2 md:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl w-full max-w-4xl mx-2 md:mx-4 my-4 md:my-8 overflow-hidden animate-in zoom-in-95 duration-200 max-h-[95vh] flex flex-col">
         {/* Header */}
-        <div className="relative bg-gradient-to-r from-violet-600 to-violet-700 p-4 md:p-6 text-white flex-shrink-0">
+        <div className="relative bg-linear-to-r from-violet-600 to-violet-700 p-4 md:p-6 text-white shrink-0">
           <button
             onClick={handleClose}
             disabled={isProcessing}
@@ -415,7 +415,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       {plan?.description}
                     </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
+                  <div className="text-right shrink-0">
                     <div className="text-xl md:text-2xl font-bold text-violet-600">
                       ¥{amount.toFixed(2)}
                     </div>
@@ -452,7 +452,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       } ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       <div
-                        className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center shrink-0 ${
                           selectedMethod === PaymentMethod.WECHAT
                             ? "bg-violet-100"
                             : "bg-gray-100"
@@ -476,7 +476,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         </div>
                       </div>
                       {selectedMethod === PaymentMethod.WECHAT && (
-                        <div className="w-4 h-4 md:w-5 md:h-5 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0">
+                        <div className="w-4 h-4 md:w-5 md:h-5 rounded-full bg-violet-600 flex items-center justify-center shrink-0">
                           <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white"></div>
                         </div>
                       )}
@@ -494,7 +494,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   } ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   <div
-                    className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center shrink-0 ${
                       selectedMethod === PaymentMethod.ALIPAY
                         ? "bg-violet-100"
                         : "bg-gray-100"

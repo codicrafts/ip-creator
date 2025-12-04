@@ -59,13 +59,14 @@ export const getLibraryResources = async (
       typeof result.data === "object" &&
       !Array.isArray(result.data)
     ) {
-      if (result.data.resources && Array.isArray(result.data.resources)) {
-        return result.data.resources;
+      const dataObj = result.data as { resources?: LibraryResource[] };
+      if (dataObj.resources && Array.isArray(dataObj.resources)) {
+        return dataObj.resources;
       }
     }
 
     if (Array.isArray(result.data)) {
-      return result.data;
+      return result.data as LibraryResource[];
     }
 
     return [];

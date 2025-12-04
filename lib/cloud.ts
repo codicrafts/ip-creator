@@ -58,11 +58,8 @@ export const callCloudFunction = async (
       };
     }
 
-    // 成功时返回包含 success: 1 的结果
-    return {
-      success: 1,
-      ...result,
-    };
+    // 成功时返回结果
+    return result;
   } catch (error: unknown) {
     console.error(`调用云函数 ${name} 失败:`, error);
     return {

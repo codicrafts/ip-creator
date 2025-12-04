@@ -21,85 +21,80 @@ html {
   scrollbar-width: none; /* Firefox */
 }
 
-/* Animation Keyframes for Meme Preview */
+/* Animation Keyframes */
 @keyframes shake {
-  0%,
-  100% {
-    transform: translate(0, 0) rotate(0deg);
-  }
-  25% {
-    transform: translate(-5px, 5px) rotate(-5deg);
-  }
-  50% {
-    transform: translate(5px, -5px) rotate(5deg);
-  }
-  75% {
-    transform: translate(-5px, -5px) rotate(-5deg);
-  }
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-5px, 5px) rotate(-5deg); }
+  50% { transform: translate(5px, -5px) rotate(5deg); }
+  75% { transform: translate(-5px, -5px) rotate(-5deg); }
 }
 @keyframes pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 @keyframes zoom {
-  0% {
-    transform: scale(1);
-  }
-  100% {
-    transform: scale(1.2);
-  }
+  0% { transform: scale(1); }
+  100% { transform: scale(1.2); }
 }
 @keyframes spin {
-  0% {
-    transform: rotate(0deg);
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+/* 新增：酷炫背景动画 */
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+  100% { transform: translateY(0px); }
+}
+@keyframes gradient-x {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 40px, 0);
   }
-  100% {
-    transform: rotate(360deg);
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }
-
-.animate-shake {
-  animation: shake 0.5s infinite;
-}
-.animate-pulse-fast {
-  animation: pulse 0.8s infinite;
-}
-.animate-zoom {
-  animation: zoom 2s infinite alternate;
-}
-.animate-spin-slow {
-  animation: spin 3s infinite linear;
-}
-
-/* 从左到右的擦除动画 */
 @keyframes wipe {
-  0% {
-    left: -50%;
-  }
-  100% {
-    left: 100%;
-  }
+  0% { left: -50%; }
+  100% { left: 100%; }
 }
 
+/* Utility Classes */
+.animate-shake { animation: shake 0.5s infinite; }
+.animate-pulse-fast { animation: pulse 0.8s infinite; }
+.animate-zoom { animation: zoom 2s infinite alternate; }
+.animate-spin-slow { animation: spin 3s infinite linear; }
+.animate-blob { animation: blob 7s infinite; }
+.animate-float { animation: float 6s ease-in-out infinite; }
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 15s ease infinite;
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
 .animate-wipe {
   animation: wipe 2s ease-in-out infinite;
 }
 
-/* Shimmer 动画效果 - 用于图片加载占位符 */
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
+.animation-delay-2000 { animation-delay: 2s; }
+.animation-delay-4000 { animation-delay: 4s; }
 
-.animate-shimmer {
-  animation: shimmer 2s infinite;
+/* Custom Selection */
+::selection {
+  background-color: #a78bfa; /* Violet 400 */
+  color: white;
 }

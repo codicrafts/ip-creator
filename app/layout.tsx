@@ -9,8 +9,16 @@ import { GeneratedImage, UserTier } from "@/types";
 import { UserInfo } from "@/services/userService";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import { getTodayDateString } from "@/lib/date-utils";
+import { ZCOOL_QingKe_HuangYou } from "next/font/google";
 
 const TRACKING_ID = "G-RKP0BDSH43";
+
+const zcool = ZCOOL_QingKe_HuangYou({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-zcool",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "IP 创想坊",
@@ -35,8 +43,8 @@ export default async function RootLayout({
     console.error("Get server user info error:", error);
     const today = getTodayDateString();
     userInfo = {
-      userId: undefined,
-      phone: undefined,
+      userId: "",
+      phone: "",
       userTier: UserTier.FREE,
       sceneUsage: { date: today, count: 0 },
       memeUsage: { date: today, count: 0 },
@@ -70,7 +78,7 @@ export default async function RootLayout({
         />
       </head>
       <body
-        className="bg-gray-50 text-gray-900 antialiased selection:bg-violet-200 selection:text-violet-900"
+        className={`bg-gray-50 text-gray-900 antialiased selection:bg-violet-200 selection:text-violet-900 ${zcool.variable}`}
         style={{ backgroundColor: "#f9fafb" }}
       >
         <ReduxProvider

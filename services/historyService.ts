@@ -8,13 +8,11 @@ import { callCloudFunction } from "@/lib/cloud";
 import { getUserId } from "@/lib/cookies";
 
 export interface HistoryItem extends GeneratedImage {
-  userId?: string;
   type: "scene" | "meme"; // 场景扩展或表情包
   createdAt?: Date;
 }
 
 export interface SaveHistoryRequest {
-  userId?: string;
   type: "scene" | "meme";
   url: string;
   prompt: string;
@@ -47,7 +45,7 @@ export const saveHistory = async (
       return null;
     }
 
-    return result.data;
+    return result.data as HistoryItem;
   } catch (error) {
     console.error("Save history error:", error);
     return null;
@@ -55,12 +53,71 @@ export const saveHistory = async (
 };
 
 /**
+ * 批量保存历史记录到数据库
+ */
+export const batchSaveHistory = async (
+  items: Array<{
+    type: "scene" | "meme";
+    url: string;
+    prompt: string;
+    style?: string;
+    index: number;
+  }>
+): Promise<
+  Array<{ index: number; historyItem?: HistoryItem; error?: string }>
+> => {
+  try {
+    const userId = getUserId();
+
+    // 调用批量保存接口
+    const result = await callCloudFunction("history", {
+      action: "save",
+      userId: userId || undefined,
+      items,
+    });
+
+    if (result.success !== 1) {
+      console.error("Failed to batch save history:", result.message);
+      return items.map((item) => ({
+        index: item.index,
+        error: result.message || "Batch save history failed",
+      }));
+    }
+
+    // 映射返回结果
+    const historyResults = result.data as Array<{
+      success: boolean;
+      data?: HistoryItem;
+      error?: string;
+      index: number;
+    }>;
+
+    return historyResults.map((res) => {
+      if (res.success && res.data) {
+        return {
+          index: res.index,
+          historyItem: res.data,
+        };
+      } else {
+        return {
+          index: res.index,
+          error: res.error || "Save history failed",
+        };
+      }
+    });
+  } catch (error) {
+    console.error("Batch save history error:", error);
+    return items.map((item) => ({
+      index: item.index,
+      error: "Batch save history failed",
+    }));
+  }
+};
+
+/**
  * 获取用户的历史记录列表
  */
-export const getHistory = async (
-  userId?: string,
-  limit: number = 50
-): Promise<HistoryItem[]> => {
+export const getHistory = async (userId?: string, limit: number = 100) => {
   try {
     const targetUserId = userId || getUserId();
 
@@ -86,8 +143,9 @@ export const getHistory = async (
       typeof result.data === "object" &&
       !Array.isArray(result.data)
     ) {
-      if (result.data.history && Array.isArray(result.data.history)) {
-        return result.data.history;
+      const dataObj = result.data as { history?: any[] };
+      if (dataObj.history && Array.isArray(dataObj.history)) {
+        return dataObj.history;
       }
     }
 
@@ -106,19 +164,26 @@ export const getHistory = async (
 /**
  * 删除历史记录（支持单个或批量删除）
  */
-export const deleteHistory = async (
-  historyId: string | string[]
-): Promise<boolean> => {
+export const deleteHistory = async (historyId: string | string[]) => {
   try {
     const userId = getUserId();
 
+    if (!userId) {
+      return false;
+    }
+
     const result = await callCloudFunction("history", {
       action: "delete",
-      userId: userId || undefined,
-      historyId: Array.isArray(historyId) ? historyId : [historyId],
+      userId,
+      historyId,
     });
 
-    return result.success === 1;
+    if (result.success !== 1) {
+      console.error("Failed to delete history:", result.message);
+      return false;
+    }
+
+    return true;
   } catch (error) {
     console.error("Delete history error:", error);
     return false;

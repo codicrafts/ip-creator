@@ -16,7 +16,7 @@ import {
 } from "@/lib/gemini-utils";
 
 // 类型定义
-interface GenerationConfig {
+interface GenerationConfig extends Record<string, unknown> {
   responseModalities: string[];
   imageConfig?: {
     aspectRatio?: string;
@@ -145,7 +145,8 @@ export const generateExtendedScene = async (
   try {
     // 处理图片输入
     const { cleanBase64, mimeType: detectedMimeType } = await processImageInput(
-      base64Image
+      base64Image,
+      true // 使用高分辨率
     );
 
     // 构建生成配置
@@ -159,7 +160,8 @@ export const generateExtendedScene = async (
     const prompts = Array.isArray(prompt) ? prompt : [prompt];
 
     // 为场景扩展添加保持原图背景的指令
-    const backgroundInstruction = "Keep the original background from the image completely unchanged. Only extend the scene while preserving the exact background. ";
+    const backgroundInstruction =
+      "Ensure the main character's action matches the prompt while keeping their appearance and style consistent with the original image. Cross-image Consistency: Ensure the appearance, style, and background of the protagonist in all generated images are exactly the same, maintaining strict visual coherence and avoiding any deviations in features or style. ";
     const enhancedPrompts = prompts.map((p) => {
       if (p?.trim()) {
         return `${backgroundInstruction}${p.trim()}`;
@@ -168,7 +170,9 @@ export const generateExtendedScene = async (
     });
 
     // 日志记录
-    console.log(`[Gemini Service] 生成场景扩展，提示词数量: ${enhancedPrompts.length}`);
+    console.log(
+      `[Gemini Service] 生成场景扩展，提示词数量: ${enhancedPrompts.length}`
+    );
     enhancedPrompts.forEach((p, idx) => {
       console.log(
         `[Gemini Service]  提示词 ${idx + 1}: ${p.substring(0, 100)}...`
@@ -176,7 +180,11 @@ export const generateExtendedScene = async (
     });
 
     // 构建请求 parts
-    const parts = buildRequestParts(cleanBase64, detectedMimeType, enhancedPrompts);
+    const parts = buildRequestParts(
+      cleanBase64,
+      detectedMimeType,
+      enhancedPrompts
+    );
 
     console.log(
       `[Gemini Service] 构建的 parts 数量: ${parts.length} (1个图片 + ${
@@ -230,6 +238,98 @@ export const generateExtendedScene = async (
 };
 
 /**
+ * 批量生成场景扩展
+ * 支持一次调用生成多个场景
+ */
+export const generateBatchExtendedScenes = async (
+  requests: Array<{
+    base64Image: string;
+    prompt: string | string[];
+    index: number; // 用于标识结果对应哪个请求
+    aspectRatio?: string;
+    imageSize?: "1K" | "2K" | "4K";
+    imageFormat?: "PNG" | "JPEG" | "WEBP";
+  }>
+): Promise<Array<{ index: number; result?: string; error?: string }>> => {
+  try {
+    console.log(`[Gemini Service] 开始批量生成，任务数量: ${requests.length}`);
+
+    // 处理每个请求的输入
+    const paths = await Promise.all(
+      requests.map(async (req) => {
+        const { cleanBase64, mimeType: detectedMimeType } =
+          await processImageInput(req.base64Image, true); // 使用高分辨率
+
+        const generationConfig = buildGenerationConfig(
+          req.aspectRatio,
+          req.imageSize,
+          req.imageFormat
+        );
+
+        const prompts = Array.isArray(req.prompt) ? req.prompt : [req.prompt];
+        const backgroundInstruction =
+          "Ensure the main character's action matches the prompt while keeping their appearance and style consistent with the original image. Cross-image Consistency: Ensure the appearance, style, and background of the protagonist in all generated images are exactly the same, maintaining strict visual coherence and avoiding any deviations in features or style. ";
+        const enhancedPrompts = prompts.map((p) => {
+          if (p?.trim()) {
+            return `${backgroundInstruction}${p.trim()}`;
+          }
+          return p;
+        });
+
+        const parts = buildRequestParts(
+          cleanBase64,
+          detectedMimeType,
+          enhancedPrompts
+        );
+
+        return {
+          index: req.index,
+          contents: [{ parts }],
+          generationConfig,
+        };
+      })
+    );
+
+    // 发送批量请求
+    // 注意：这里我们构造一个包含 paths 数组的请求体
+    // 后端 API 需要支持这种格式
+    const response = await fetchWithTimeout(
+      API_BASE_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          paths, // 包含每个请求的完整参数
+        }),
+      },
+      REQUEST_TIMEOUT_MS
+    );
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // 假设后端返回格式为 { results: [{ index, result, error }, ...] }
+    if (!data.results || !Array.isArray(data.results)) {
+      throw new Error("Invalid batch response format");
+    }
+
+    return data.results;
+  } catch (error) {
+    console.error("Batch Gemini API Error:", error);
+    // 如果整个批量请求失败，返回所有任务失败
+    return requests.map((req) => ({
+      index: req.index,
+      error: error instanceof Error ? error.message : "Batch generation failed",
+    }));
+  }
+};
+
+/**
  * 计算 base64 数据大小（KB）
  */
 function calculateBase64Size(base64: string): number {
@@ -251,6 +351,7 @@ function buildStickerPrompt(
 Style: Vector art, flat color, thick white outline around the character edges only. 
 Quality: Ultra-high resolution, sharp details, crisp edges, professional quality.
 ${backgroundInstruction}
+Cross-image Consistency: Maintain strict visual consistency to avoid any deviations in features or style across multiple images.
 Expression/Action: ${moodPrompt}. `;
 }
 
@@ -363,5 +464,127 @@ export const generateSticker = async (
   } catch (error) {
     console.error("Sticker Generation Error:", error);
     throw error;
+  }
+};
+
+/**
+ * 批量生成表情包贴纸
+ */
+export const generateBatchStickers = async (
+  requests: Array<{
+    base64Image: string;
+    moodPrompt: string;
+    index: number;
+    options?: {
+      removeBackground?: boolean;
+      keepOriginal?: boolean;
+    };
+  }>
+): Promise<Array<{ index: number; result?: string; error?: string }>> => {
+  try {
+    console.log(
+      `[Gemini Service] 开始批量生成表情包，任务数量: ${requests.length}`
+    );
+
+    // 筛选出需要生成的请求（排除 keepOriginal）
+    const tasksToGenerate = requests.filter(
+      (req) => !req.options?.keepOriginal
+    );
+    const skippedRequests = requests.filter((req) => req.options?.keepOriginal);
+
+    // 预处理结果（对于 keepOriginal 的请求直接返回原图）
+    const results: Array<{ index: number; result?: string; error?: string }> =
+      skippedRequests.map((req) => ({
+        index: req.index,
+        result: req.base64Image,
+      }));
+
+    if (tasksToGenerate.length === 0) {
+      return results;
+    }
+
+    // 处理需要生成的请求
+    const paths = await Promise.all(
+      tasksToGenerate.map(async (req) => {
+        const { cleanBase64, mimeType: detectedMimeType } =
+          await processImageInput(req.base64Image, true); // 使用高分辨率
+
+        const fullPrompt = buildStickerPrompt(
+          req.moodPrompt,
+          req.options?.removeBackground
+        );
+
+        const generationConfig: GenerationConfig = {
+          responseModalities: ["IMAGE"],
+        };
+
+        const parts = [
+          {
+            inlineData: {
+              data: cleanBase64,
+              mimeType: detectedMimeType,
+            },
+          },
+          {
+            text: fullPrompt,
+          },
+        ];
+
+        return {
+          index: req.index,
+          contents: [
+            {
+              parts,
+            },
+          ],
+          generationConfig,
+        };
+      })
+    );
+
+    // 发送批量请求
+    const response = await fetchWithTimeout(
+      API_BASE_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          paths,
+        }),
+      },
+      REQUEST_TIMEOUT_MS
+    );
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.results || !Array.isArray(data.results)) {
+      throw new Error("Invalid batch response format");
+    }
+
+    // 合并生成结果和直接返回的结果
+    return [...results, ...data.results];
+  } catch (error) {
+    console.error("Batch Sticker Generation Error:", error);
+    // 如果整个批量请求失败，返回所有需要生成的任务失败
+    return requests.map((req) => {
+      // 如果是 keepOriginal，仍然成功
+      if (req.options?.keepOriginal) {
+        return {
+          index: req.index,
+          result: req.base64Image,
+        };
+      }
+      return {
+        index: req.index,
+        error:
+          error instanceof Error ? error.message : "Batch generation failed",
+      };
+    });
   }
 };

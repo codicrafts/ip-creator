@@ -205,12 +205,12 @@ export default function AlipayTestPage() {
                 {step1Result.success ? (
                   <CheckCircle
                     size={20}
-                    className="text-green-600 flex-shrink-0 mt-0.5"
+                    className="text-green-600 shrink-0 mt-0.5"
                   />
                 ) : (
                   <XCircle
                     size={20}
-                    className="text-red-600 flex-shrink-0 mt-0.5"
+                    className="text-red-600 shrink-0 mt-0.5"
                   />
                 )}
                 <div className="flex-1">
@@ -387,12 +387,12 @@ export default function AlipayTestPage() {
                 {step3Result.success ? (
                   <CheckCircle
                     size={20}
-                    className="text-green-600 flex-shrink-0 mt-0.5"
+                    className="text-green-600 shrink-0 mt-0.5"
                   />
                 ) : (
                   <XCircle
                     size={20}
-                    className="text-red-600 flex-shrink-0 mt-0.5"
+                    className="text-red-600 shrink-0 mt-0.5"
                   />
                 )}
                 <div className="flex-1">

@@ -85,7 +85,7 @@ const MembershipPlans: React.FC<MembershipPlansProps> = ({
       >
         {/* 推荐标签 */}
         {isPopular && (
-          <div className="absolute -top-2 md:-top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-500 to-violet-600 text-white text-[10px] md:text-xs font-bold px-3 md:px-4 py-0.5 md:py-1 rounded-full shadow-lg flex items-center gap-1">
+          <div className="absolute -top-2 md:-top-3 left-1/2 -translate-x-1/2 bg-linear-to-r from-violet-500 to-violet-600 text-white text-[10px] md:text-xs font-bold px-3 md:px-4 py-0.5 md:py-1 rounded-full shadow-lg flex items-center gap-1">
             <Sparkles size={10} className="md:w-3 md:h-3" />
             推荐
           </div>
@@ -135,7 +135,7 @@ const MembershipPlans: React.FC<MembershipPlansProps> = ({
             <div key={index} className="flex items-start gap-2">
               <Check
                 size={14}
-                className={`flex-shrink-0 mt-0.5 md:w-4 md:h-4 ${getPriceColor(
+                className={`shrink-0 mt-0.5 md:w-4 md:h-4 ${getPriceColor(
                   plan.color
                 )}`}
               />
@@ -184,7 +184,7 @@ const MembershipPlans: React.FC<MembershipPlansProps> = ({
                 key={plan.id}
                 onClick={() => setActiveTab(plan.id)}
                 className={`
-                  relative px-3 py-1.5 rounded-lg border transition-all text-xs font-medium flex-shrink-0 whitespace-nowrap
+                  relative px-3 py-1.5 rounded-lg border transition-all text-xs font-medium shrink-0 whitespace-nowrap
                   ${
                     isActive
                       ? isSelected

@@ -234,8 +234,14 @@ async function handleUser(body: any, db: any) {
       // 检查 sceneUsage.date 的格式
       // 如果是日期格式（包含 "-" 且长度为 10，如 "2024-01-15"），说明是从免费用户升级的，需要重置
       // 如果是月份格式（长度为 7，如 "2024-01"），则按月份比较
-      const isSceneDateFormat = sceneUsage.date && sceneUsage.date.length === 10 && sceneUsage.date.includes("-");
-      const isMemeDateFormat = memeUsage.date && memeUsage.date.length === 10 && memeUsage.date.includes("-");
+      const isSceneDateFormat =
+        sceneUsage.date &&
+        sceneUsage.date.length === 10 &&
+        sceneUsage.date.includes("-");
+      const isMemeDateFormat =
+        memeUsage.date &&
+        memeUsage.date.length === 10 &&
+        memeUsage.date.includes("-");
 
       // 如果日期格式不匹配（从免费用户升级），或者月份不同，重置计数
       if (isSceneDateFormat || sceneUsage.date !== currentMonth) {
@@ -250,9 +256,12 @@ async function handleUser(body: any, db: any) {
       }
 
       // 如果使用次数需要重置，更新数据库
-      if (isSceneDateFormat || isMemeDateFormat || 
-          sceneUsage.date !== user.sceneUsage?.date || 
-          memeUsage.date !== user.memeUsage?.date) {
+      if (
+        isSceneDateFormat ||
+        isMemeDateFormat ||
+        sceneUsage.date !== user.sceneUsage?.date ||
+        memeUsage.date !== user.memeUsage?.date
+      ) {
         await db
           .collection("users")
           .doc(userId)
@@ -411,37 +420,86 @@ async function handleUser(body: any, db: any) {
  * 处理 history 云函数
  */
 async function handleHistory(body: any, db: any) {
-  const { action, userId, type, url, prompt, style, historyId, limit } = body;
+  const { action, userId, type, url, prompt, style, historyId, limit, items } =
+    body;
 
   if (action === "save") {
-    // 保存历史记录
-    const historyItem = {
-      userId: userId || null,
-      type: type, // 'scene' 或 'meme'
-      url: url,
-      prompt: prompt,
-      style: style || null,
-      timestamp: Date.now(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    if (items && Array.isArray(items)) {
+      // 批量保存
+      const results = [];
+      for (const item of items) {
+        const historyItem = {
+          userId: userId || null,
+          type: item.type, // 'scene' 或 'meme'
+          url: item.url,
+          prompt: item.prompt,
+          style: item.style || null,
+          timestamp: Date.now(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
 
-    const addResult = await db.collection("history").add({
-      data: historyItem,
-    });
+        try {
+          const addResult = await db.collection("history").add({
+            data: historyItem,
+          });
+          results.push({
+            success: true,
+            data: {
+              id: addResult._id,
+              userId: historyItem.userId,
+              type: historyItem.type,
+              url: historyItem.url,
+              prompt: historyItem.prompt,
+              style: historyItem.style,
+              timestamp: historyItem.timestamp,
+            },
+            index: item.index, // 保留前端传来的 index
+          });
+        } catch (err: any) {
+          console.error("批量保存历史记录失败:", err);
+          results.push({
+            success: false,
+            error: err.message,
+            index: item.index,
+          });
+        }
+      }
 
-    return NextResponse.json({
-      success: 1,
-      data: {
-        id: addResult._id,
-        userId: historyItem.userId,
-        type: historyItem.type,
-        url: historyItem.url,
-        prompt: historyItem.prompt,
-        style: historyItem.style,
-        timestamp: historyItem.timestamp,
-      },
-    });
+      return NextResponse.json({
+        success: 1,
+        data: results, // 返回批量结果
+      });
+    } else {
+      // 单条保存
+      const historyItem = {
+        userId: userId || null,
+        type: type, // 'scene' 或 'meme'
+        url: url,
+        prompt: prompt,
+        style: style || null,
+        timestamp: Date.now(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const addResult = await db.collection("history").add({
+        data: historyItem,
+      });
+
+      return NextResponse.json({
+        success: 1,
+        data: {
+          id: addResult._id,
+          userId: historyItem.userId,
+          type: historyItem.type,
+          url: historyItem.url,
+          prompt: historyItem.prompt,
+          style: historyItem.style,
+          timestamp: historyItem.timestamp,
+        },
+      });
+    }
   } else if (action === "getList") {
     // 获取历史记录列表
     if (!userId) {
@@ -535,82 +593,171 @@ async function handleHistory(body: any, db: any) {
  */
 async function handleUploadImage(body: any) {
   try {
-    const { base64Data, fileName, mimeType } = body;
-
-    if (!base64Data) {
-      return NextResponse.json({
-        success: 0,
-        message: "图片数据不能为空",
-      });
-    }
+    const { base64Data, fileName, mimeType, images } = body;
 
     // 获取云实例
     const { cloud } = await getCloudDB();
 
-    // 处理 base64 数据（可能包含 data:image/xxx;base64, 前缀）
-    let cleanBase64 = base64Data;
-    let detectedMimeType = mimeType || "image/png";
-    let fileExt = "png";
+    if (images && Array.isArray(images)) {
+      // 批量上传
+      const results = [];
+      for (const img of images) {
+        try {
+          const {
+            base64Data: imgData,
+            fileName: imgName,
+            mimeType: imgMime,
+            index,
+          } = img;
 
-    if (base64Data.includes(",")) {
-      const parts = base64Data.split(",");
-      if (parts.length === 2) {
-        // 提取 mimeType
-        const mimeMatch = parts[0].match(/data:image\/([^;]+)/);
-        if (mimeMatch) {
-          const mimeTypePart = mimeMatch[1].toLowerCase();
-          detectedMimeType = `image/${mimeTypePart}`;
-          // 根据 mimeType 确定文件扩展名
-          if (mimeTypePart === "jpeg" || mimeTypePart === "jpg") {
-            fileExt = "jpg";
-          } else if (mimeTypePart === "webp") {
-            fileExt = "webp";
-          } else {
-            fileExt = "png";
+          if (!imgData) {
+            results.push({ success: false, error: "图片数据为空", index });
+            continue;
           }
+
+          let cleanBase64 = imgData;
+          let detectedMimeType = imgMime || "image/png";
+          let fileExt = "png";
+
+          if (imgData.includes(",")) {
+            const parts = imgData.split(",");
+            if (parts.length === 2) {
+              const mimeMatch = parts[0].match(/data:image\/([^;]+)/);
+              if (mimeMatch) {
+                const mimeTypePart = mimeMatch[1].toLowerCase();
+                detectedMimeType = `image/${mimeTypePart}`;
+                if (mimeTypePart === "jpeg" || mimeTypePart === "jpg") {
+                  fileExt = "jpg";
+                } else if (mimeTypePart === "webp") {
+                  fileExt = "webp";
+                } else {
+                  fileExt = "png";
+                }
+              }
+              cleanBase64 = parts[1];
+            }
+          }
+
+          const finalFileName =
+            imgName ||
+            `images/${Date.now()}-${Math.random()
+              .toString(36)
+              .substring(7)}.${fileExt}`;
+
+          const imageBuffer = Buffer.from(cleanBase64, "base64");
+
+          const uploadResult = await cloud.uploadFile({
+            cloudPath: finalFileName,
+            fileContent: imageBuffer,
+          });
+
+          const downloadUrls = await cloud.getTempFileURL({
+            fileList: [uploadResult.fileID],
+          });
+
+          if (!downloadUrls.fileList || downloadUrls.fileList.length === 0) {
+            results.push({ success: false, error: "获取文件链接失败", index });
+            continue;
+          }
+
+          const fileUrl = downloadUrls.fileList[0].tempFileURL;
+          results.push({
+            success: true,
+            data: {
+              url: fileUrl,
+              fileId: uploadResult.fileID,
+              fileName: finalFileName,
+            },
+            index,
+          });
+        } catch (err: any) {
+          console.error("单张图片上传失败:", err);
+          results.push({
+            success: false,
+            error: err.message,
+            index: img.index,
+          });
         }
-        cleanBase64 = parts[1];
       }
-    }
 
-    // 生成文件名（如果未提供）
-    const finalFileName =
-      fileName ||
-      `images/${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(7)}.${fileExt}`;
-
-    // 将 base64 转换为 Buffer
-    const imageBuffer = Buffer.from(cleanBase64, "base64");
-
-    // 上传到云存储（使用 cloud.uploadFile）
-    const uploadResult = await cloud.uploadFile({
-      cloudPath: finalFileName,
-      fileContent: imageBuffer,
-    });
-
-    // 获取文件临时链接（每次获取新的，有效期更长）
-    const downloadUrls = await cloud.getTempFileURL({
-      fileList: [uploadResult.fileID],
-    });
-
-    if (!downloadUrls.fileList || downloadUrls.fileList.length === 0) {
       return NextResponse.json({
-        success: 0,
-        message: "获取文件链接失败",
+        success: 1,
+        data: results,
+      });
+    } else {
+      // 单张上传
+      if (!base64Data) {
+        return NextResponse.json({
+          success: 0,
+          message: "图片数据不能为空",
+        });
+      }
+
+      // 处理 base64 数据（可能包含 data:image/xxx;base64, 前缀）
+      let cleanBase64 = base64Data;
+      let detectedMimeType = mimeType || "image/png";
+      let fileExt = "png";
+
+      if (base64Data.includes(",")) {
+        const parts = base64Data.split(",");
+        if (parts.length === 2) {
+          // 提取 mimeType
+          const mimeMatch = parts[0].match(/data:image\/([^;]+)/);
+          if (mimeMatch) {
+            const mimeTypePart = mimeMatch[1].toLowerCase();
+            detectedMimeType = `image/${mimeTypePart}`;
+            // 根据 mimeType 确定文件扩展名
+            if (mimeTypePart === "jpeg" || mimeTypePart === "jpg") {
+              fileExt = "jpg";
+            } else if (mimeTypePart === "webp") {
+              fileExt = "webp";
+            } else {
+              fileExt = "png";
+            }
+          }
+          cleanBase64 = parts[1];
+        }
+      }
+
+      // 生成文件名（如果未提供）
+      const finalFileName =
+        fileName ||
+        `images/${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(7)}.${fileExt}`;
+
+      // 将 base64 转换为 Buffer
+      const imageBuffer = Buffer.from(cleanBase64, "base64");
+
+      // 上传到云存储（使用 cloud.uploadFile）
+      const uploadResult = await cloud.uploadFile({
+        cloudPath: finalFileName,
+        fileContent: imageBuffer,
+      });
+
+      // 获取文件临时链接（每次获取新的，有效期更长）
+      const downloadUrls = await cloud.getTempFileURL({
+        fileList: [uploadResult.fileID],
+      });
+
+      if (!downloadUrls.fileList || downloadUrls.fileList.length === 0) {
+        return NextResponse.json({
+          success: 0,
+          message: "获取文件链接失败",
+        });
+      }
+
+      const fileUrl = downloadUrls.fileList[0].tempFileURL;
+
+      return NextResponse.json({
+        success: 1,
+        data: {
+          url: fileUrl,
+          fileId: uploadResult.fileID, // 返回 fileID，用于后续刷新链接
+          fileName: finalFileName,
+        },
       });
     }
-
-    const fileUrl = downloadUrls.fileList[0].tempFileURL;
-
-    return NextResponse.json({
-      success: 1,
-      data: {
-        url: fileUrl,
-        fileId: uploadResult.fileID, // 返回 fileID，用于后续刷新链接
-        fileName: finalFileName,
-      },
-    });
   } catch (error: any) {
     console.error("上传图片失败:", error);
     return NextResponse.json(

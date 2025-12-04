@@ -136,9 +136,7 @@ export function calculateAnimationTransform(
       break;
     }
     case AnimationType.FLIP: {
-      // Flip animation - scale horizontally
-      const scaleX = t < 0.5 ? 1 - t * 2 : (t - 0.5) * 2;
-      ctx.scale(scaleX, 1);
+      // Flip animation - scale horizontally (handled in main loop)
       break;
     }
     case AnimationType.SWING: {
@@ -287,7 +285,7 @@ export async function createGifWithFFmpeg(
 
     ctx.restore();
 
-    const blob = await new Promise<Blob>((resolve) => {
+    const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
         else reject(new Error("Failed to create blob"));

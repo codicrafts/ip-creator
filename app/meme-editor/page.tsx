@@ -80,7 +80,7 @@ export default function MemeEditorPage() {
   );
 
   // Use quota hook
-  const quota = useQuota("meme");
+  // const quota = useQuota("meme");
   const isPaymentModalOpen = useAppSelector(
     (state) => state.app.isPaymentModalOpen
   );
@@ -94,7 +94,7 @@ export default function MemeEditorPage() {
   const processedImageRef = useRef<{ [key: string]: string }>({});
 
   // Use FFmpeg hook
-  const { initFFmpeg } = useFFmpeg();
+  // const { initFFmpeg } = useFFmpeg();
   // 管理情绪套餐下拉菜单的显示状态：{ groupIndex: boolean } 或 'single' 表示单分组模式
   const [moodPackMenuOpen, setMoodPackMenuOpen] = useState<
     number | "single" | null
@@ -161,19 +161,47 @@ export default function MemeEditorPage() {
         !activeDraft.groupResults ||
         activeDraft.groupResults.length !== prompts.length
       ) {
-        const initialResults = prompts.map(() => ({
-          generatedUrl: null,
-          status: "pending" as const,
-        }));
+        const existingResults = activeDraft.groupResults || [];
+
+        // 尝试从单分组模式迁移数据
+        let firstResult = existingResults[0];
+        if (!firstResult && existingResults.length === 0) {
+          // 如果之前是单分组，且有生成结果，迁移到第一个分组
+          if (activeDraft.generatedUrl) {
+            firstResult = {
+              generatedUrl: activeDraft.generatedUrl,
+              status: activeDraft.status || "done",
+            };
+          } else if (activeDraft.status === "pending") {
+            // 如果是 pending 状态
+            firstResult = {
+              generatedUrl: null,
+              status: "pending",
+            };
+          }
+        }
+
+        const newResults = prompts.map((_, index) => {
+          // 第一个分组，如果有迁移数据，使用迁移数据
+          if (index === 0 && firstResult) return firstResult;
+          // 其他已存在的分组，保留原有数据
+          if (index < existingResults.length) return existingResults[index];
+          // 新增的分组，初始化为 pending
+          return {
+            generatedUrl: null,
+            status: "pending" as const,
+          };
+        });
+
         dispatch(
           updateMemeDraft({
             index: activeDraftIndex,
-            draft: { groupResults: initialResults },
+            draft: { groupResults: newResults },
           })
         );
       }
     }
-  }, [activeDraft?.id, activeDraftIndex, dispatch, getTextPrompts]);
+  }, [activeDraft?.id, activeDraftIndex, dispatch, getTextPrompts]); // 注意：activeDraft 本身变化时会触发，所以这里逻辑必须是幂等的或者有条件判断
 
   // 当前选中的分组索引（用于预览）
   const [activeGroupIndex, setActiveGroupIndex] = useState(0);
@@ -829,7 +857,9 @@ export default function MemeEditorPage() {
                 ) : (
                   <Download size={16} />
                 )}
-                {completedCount === 1
+                {isExporting
+                  ? "打包下载中..."
+                  : completedCount === 1
                   ? "下载表情包"
                   : `批量下载所有表情包 (${completedCount} 张)`}
               </button>
@@ -1107,7 +1137,7 @@ export default function MemeEditorPage() {
                     {/* 擦除动画效果 */}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="relative w-full h-full">
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-violet-400/70 to-transparent animate-wipe z-10"></div>
+                        <div className="absolute inset-0 bg-linear-to-r from-transparent via-violet-400/70 to-transparent animate-wipe z-10"></div>
                       </div>
                     </div>
                     {/* 提示文字 */}
@@ -1260,6 +1290,8 @@ export default function MemeEditorPage() {
             <TextPromptGroups
               activeDraft={activeDraft}
               activeDraftIndex={activeDraftIndex}
+              activeGroupIndex={activeGroupIndex}
+              onGroupSelect={setActiveGroupIndex}
               getGroupResults={getGroupResults}
               hasSelectedMoodPack={hasSelectedMoodPack}
               onApplyMoodPack={applyMoodPackToGroup}

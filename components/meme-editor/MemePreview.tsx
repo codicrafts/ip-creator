@@ -9,8 +9,12 @@ interface MemePreviewProps {
   previewGif: string | null;
   isGeneratingPreview: boolean;
   processedImageRef: React.MutableRefObject<{ [key: string]: string }>;
-  getTextPrompts: (draft: MemeDraft) => Array<{ text: string; moodPrompt: string }>;
-  getGroupResults: (draft: MemeDraft) => Array<{ generatedUrl: string | null; status: string }>;
+  getTextPrompts: (
+    draft: MemeDraft
+  ) => Array<{ text: string; moodPrompt: string }>;
+  getGroupResults: (
+    draft: MemeDraft
+  ) => Array<{ generatedUrl: string | null; status: string }>;
   activeGroupIndex: number;
   activeDraftIndex: number;
   memeDrafts: MemeDraft[];
@@ -91,7 +95,9 @@ export default function MemePreview({
                             <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-lg flex items-center justify-center">
                               <Package className="w-8 h-8 text-gray-400" />
                             </div>
-                            <span className="text-sm text-gray-500">暂无图片</span>
+                            <span className="text-sm text-gray-500">
+                              暂无图片
+                            </span>
                           </div>
                         </div>
                       );
@@ -156,4 +162,3 @@ export default function MemePreview({
     </div>
   );
 }
-

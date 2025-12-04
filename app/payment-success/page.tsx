@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
-import { useAppDispatch } from "@/store/hooks";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   setUserTier,
   setSceneUsage,
@@ -65,6 +65,7 @@ export default function PaymentSuccessPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
+  const userId = useAppSelector((state) => state.user.userId);
   const [status, setStatus] = useState<"loading" | "success" | "failed">(
     "loading"
   );
@@ -106,12 +107,14 @@ export default function PaymentSuccessPage() {
           setMessage("支付成功！");
 
           try {
-            const userInfo = await getUserInfo();
-            dispatch(setUserTier(userInfo.userTier));
-            dispatch(setSceneUsage(userInfo.sceneUsage));
-            dispatch(setMemeUsage(userInfo.memeUsage));
-            if (userInfo.membershipExpiresAt !== undefined) {
-              dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+            if (userId) {
+              const userInfo = await getUserInfo(userId);
+              dispatch(setUserTier(userInfo.userTier));
+              dispatch(setSceneUsage(userInfo.sceneUsage));
+              dispatch(setMemeUsage(userInfo.memeUsage));
+              if (userInfo.membershipExpiresAt !== undefined) {
+                dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+              }
             }
           } catch (err) {
             // 忽略刷新用户信息失败
@@ -139,14 +142,16 @@ export default function PaymentSuccessPage() {
                 setMessage("支付成功！");
 
                 try {
-                  const userInfo = await getUserInfo();
-                  dispatch(setUserTier(userInfo.userTier));
-                  dispatch(setSceneUsage(userInfo.sceneUsage));
-                  dispatch(setMemeUsage(userInfo.memeUsage));
-                  if (userInfo.membershipExpiresAt !== undefined) {
-                    dispatch(
-                      setMembershipExpiresAt(userInfo.membershipExpiresAt)
-                    );
+                  if (userId) {
+                    const userInfo = await getUserInfo(userId);
+                    dispatch(setUserTier(userInfo.userTier));
+                    dispatch(setSceneUsage(userInfo.sceneUsage));
+                    dispatch(setMemeUsage(userInfo.memeUsage));
+                    if (userInfo.membershipExpiresAt !== undefined) {
+                      dispatch(
+                        setMembershipExpiresAt(userInfo.membershipExpiresAt)
+                      );
+                    }
                   }
                 } catch (err) {
                   console.error("刷新用户信息失败:", err);
@@ -203,7 +208,7 @@ export default function PaymentSuccessPage() {
     };
 
     checkOrder();
-  }, [searchParams, router, dispatch]);
+  }, [searchParams, router, dispatch, userId]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">

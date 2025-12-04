@@ -248,18 +248,18 @@ export default function HistoryPage() {
                       }
                     `}
                   >
-                    <div className="relative bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 overflow-hidden min-h-[200px]">
+                    <div className="relative bg-linear-to-br from-gray-100 via-gray-50 to-gray-100 overflow-hidden min-h-[200px]">
                       {/* 加载占位符 - 骨架屏效果 */}
                       {imageLoadingStates[item.id] !== false && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-linear-to-br from-gray-100 via-gray-50 to-gray-100">
                           {/* Shimmer 动画效果 */}
-                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer"></div>
+                          <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/60 to-transparent animate-shimmer"></div>
                           {/* 加载图标 */}
                           <div className="relative z-10 flex flex-col items-center gap-2">
                             <div className="w-10 h-10 border-[3px] border-violet-200 border-t-violet-500 rounded-full animate-spin"></div>
                             <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-violet-200 via-violet-300 to-violet-200 animate-pulse"
+                                className="h-full bg-linear-to-r from-violet-200 via-violet-300 to-violet-200 animate-pulse"
                                 style={{ width: "60%" }}
                               ></div>
                             </div>

@@ -79,7 +79,11 @@ export const login = async (
       throw new Error(response.message || "登录失败");
     }
 
-    const data = response.data;
+    const data = response.data as {
+      userId: string;
+      phone: string;
+      userTier: "FREE" | "PREMIUM";
+    };
 
     // 只保存用户ID到 cookie（持久化登录态）
     setUserId(data.userId);
@@ -119,7 +123,11 @@ export const register = async (
       throw new Error(response.message || "注册失败");
     }
 
-    const data = response.data;
+    const data = response.data as {
+      userId: string;
+      phone: string;
+      userTier: "FREE";
+    };
 
     // 只保存用户ID到 cookie（持久化登录态）
     setUserId(data.userId);

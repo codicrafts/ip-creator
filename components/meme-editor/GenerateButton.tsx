@@ -50,7 +50,7 @@ export default function GenerateButton({
   };
 
   return (
-    <div className="px-6 md:px-12 pb-4 pt-2 bg-gradient-to-t from-gray-50 to-transparent max-w-6xl mx-auto w-full">
+    <div className="px-6 md:px-12 pb-4 pt-2 bg-linear-to-t from-gray-50 to-transparent max-w-6xl mx-auto w-full">
       {pendingCount > 0 ? (
         <>
           <button

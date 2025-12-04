@@ -133,6 +133,8 @@ export interface CreateOrderRequest {
   userId?: string;
   planId?: string; // 会员计划ID（BASIC, STANDARD, PREMIUM）
   isFirstMonth?: boolean; // 是否首月（享受6折优惠）
+  tradeType?: "JSAPI" | "NATIVE" | "MWEB" | "APP"; // 微信支付类型：JSAPI=小程序/公众号支付，NATIVE=扫码支付，MWEB=H5支付
+  openid?: string; // 小程序/公众号支付必填
 }
 
 export interface CreateOrderResponse {

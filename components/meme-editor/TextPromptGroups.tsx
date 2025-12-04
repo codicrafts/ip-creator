@@ -12,6 +12,8 @@ import { updateMemeDraft } from "@/store/slices/memeSlice";
 interface TextPromptGroupsProps {
   activeDraft: MemeDraft | null;
   activeDraftIndex: number;
+  activeGroupIndex?: number;
+  onGroupSelect?: (index: number) => void;
   getGroupResults: (draft: MemeDraft) => Array<{
     generatedUrl: string | null;
     status: string;
@@ -26,6 +28,8 @@ interface TextPromptGroupsProps {
 export default function TextPromptGroups({
   activeDraft,
   activeDraftIndex,
+  activeGroupIndex,
+  onGroupSelect,
   getGroupResults,
   hasSelectedMoodPack,
   onApplyMoodPack,
@@ -34,11 +38,20 @@ export default function TextPromptGroups({
   updateTextPrompts,
 }: TextPromptGroupsProps) {
   const dispatch = useAppDispatch();
-  // 移除内部 useTextPrompts 调用，使用 props 传递的方法
-  // const { getTextPrompts, updateTextPrompts } = useTextPrompts(
-  //   activeDraft,
-  //   activeDraftIndex
-  // );
+  const groupRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  // 滚动到当前选中的分组
+  useEffect(() => {
+    if (
+      activeGroupIndex !== undefined &&
+      groupRefs.current.has(activeGroupIndex)
+    ) {
+      groupRefs.current.get(activeGroupIndex)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [activeGroupIndex]);
 
   const [moodPackMenuOpen, setMoodPackMenuOpen] = useState<
     number | "single" | null
@@ -89,13 +102,68 @@ export default function TextPromptGroups({
     } else {
       newPrompts.push({ text: "", moodPrompt: "", textPosition: "bottom" });
     }
+
+    // 手动同步 groupResults，避免 page.tsx 中的 useEffect 逻辑错误地重置了现有结果
+    const currentGroupResults = activeDraft.groupResults
+      ? [...activeDraft.groupResults]
+      : [];
+
+    // 如果之前是单分组且有结果，需要先将单分组结果迁移到数组中
+    if (currentGroupResults.length === 0 && prompts.length === 0) {
+      if (activeDraft.generatedUrl) {
+        currentGroupResults.push({
+          generatedUrl: activeDraft.generatedUrl,
+          status: activeDraft.status || "done",
+        });
+      } else {
+        // 即使是 pending，也占位
+        currentGroupResults.push({
+          generatedUrl: null,
+          status: "pending",
+        });
+      }
+    }
+
+    // 添加新的 pending 结果
+    currentGroupResults.push({
+      generatedUrl: null,
+      status: "pending",
+    });
+
+    // 先更新 groupResults，再更新 prompts，确保数据一致
+    dispatch(
+      updateMemeDraft({
+        index: activeDraftIndex,
+        draft: { groupResults: currentGroupResults },
+      })
+    );
+
     updateTextPrompts(newPrompts, activeDraft.id);
   };
 
   const handleRemoveGroup = (index: number) => {
     if (hasSelectedMoodPack) return;
+
     const newPrompts = [...prompts];
     newPrompts.splice(index, 1);
+
+    // 手动同步 groupResults
+    const currentGroupResults = activeDraft.groupResults
+      ? [...activeDraft.groupResults]
+      : [];
+
+    if (index < currentGroupResults.length) {
+      currentGroupResults.splice(index, 1);
+    }
+
+    // 先更新 groupResults，再更新 prompts
+    dispatch(
+      updateMemeDraft({
+        index: activeDraftIndex,
+        draft: { groupResults: currentGroupResults },
+      })
+    );
+
     updateTextPrompts(newPrompts, activeDraft.id);
   };
 
@@ -274,18 +342,39 @@ export default function TextPromptGroups({
             status: "pending" as const,
           };
           const groupStatus = groupResult.status;
+          const isActive = index === activeGroupIndex;
 
           return (
             <div
               key={index}
-              className={`p-4 rounded-xl border-2 space-y-3 ${
-                groupStatus === "generating"
-                  ? "border-violet-300 bg-violet-50"
+              ref={(el) => {
+                if (el) {
+                  groupRefs.current.set(index, el);
+                } else {
+                  groupRefs.current.delete(index);
+                }
+              }}
+              onClick={() => onGroupSelect?.(index)}
+              className={`p-4 rounded-xl border-2 space-y-3 transition-all cursor-pointer ${
+                isActive ? "ring-2 ring-violet-200" : ""
+              } ${
+                isActive
+                  ? "border-violet-600"
+                  : groupStatus === "generating"
+                  ? "border-violet-300"
                   : groupStatus === "done"
-                  ? "border-green-200 bg-green-50"
+                  ? "border-green-200"
                   : groupStatus === "error"
-                  ? "border-red-200 bg-red-50"
-                  : "border-gray-200 bg-white"
+                  ? "border-red-200"
+                  : "border-gray-200"
+              } ${
+                groupStatus === "generating"
+                  ? "bg-violet-50"
+                  : groupStatus === "done"
+                  ? "bg-green-50"
+                  : groupStatus === "error"
+                  ? "bg-red-50"
+                  : "bg-white"
               }`}
             >
               <div className="flex items-center justify-between">
@@ -313,27 +402,69 @@ export default function TextPromptGroups({
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {groupStatus === "error" && onRetryGroup && (
-                    <button
-                      onClick={() => onRetryGroup(index)}
-                      className="px-2 py-1 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors"
-                      title="重试生成"
-                    >
-                      重试
-                    </button>
+                  {onRetryGroup && (
+                    <>
+                      {groupStatus === "error" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRetryGroup(index);
+                          }}
+                          className="px-2 py-1 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors"
+                          title="重试生成"
+                        >
+                          重试
+                        </button>
+                      )}
+                      {groupStatus === "done" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRetryGroup(index);
+                          }}
+                          className="px-2 py-1 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors"
+                          title="重新生成"
+                        >
+                          重新生成
+                        </button>
+                      )}
+                      {groupStatus === "pending" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRetryGroup(index);
+                          }}
+                          disabled={
+                            !prompt.text.trim() && !prompt.moodPrompt.trim()
+                          }
+                          className="px-2 py-1 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={
+                            !prompt.text.trim() && !prompt.moodPrompt.trim()
+                              ? "请输入文案或动作"
+                              : "生成"
+                          }
+                        >
+                          生成
+                        </button>
+                      )}
+                    </>
                   )}
                   {prompts.length > 1 && (
                     <button
                       onClick={() => handleRemoveGroup(index)}
-                      disabled={hasSelectedMoodPack}
-                      className={`p-1 text-gray-400 transition-colors ${
-                        hasSelectedMoodPack
-                          ? "cursor-not-allowed opacity-50"
-                          : "hover:text-red-500"
+                      disabled={
+                        hasSelectedMoodPack || groupStatus === "generating"
+                      }
+                      className={`p-1 transition-colors ${
+                        hasSelectedMoodPack || groupStatus === "generating"
+                          ? "cursor-not-allowed opacity-50 text-gray-300"
+                          : "text-gray-400 hover:text-red-500"
                       }`}
                       title={
                         hasSelectedMoodPack
                           ? "选择情绪套餐时不能删除分组"
+                          : groupStatus === "generating"
+                          ? "生成中不可删除"
                           : "删除分组"
                       }
                     >
@@ -415,7 +546,10 @@ export default function TextPromptGroups({
                         checked={(prompt.textPosition || "bottom") === "top"}
                         onChange={() => {
                           const newPrompts = [...prompts];
-                          newPrompts[index] = { ...newPrompts[index], textPosition: "top" };
+                          newPrompts[index] = {
+                            ...newPrompts[index],
+                            textPosition: "top",
+                          };
                           updateTextPrompts(newPrompts, activeDraft.id);
                         }}
                         className="w-4 h-4 text-violet-600 focus:ring-violet-500"
@@ -429,7 +563,10 @@ export default function TextPromptGroups({
                         checked={(prompt.textPosition || "bottom") === "bottom"}
                         onChange={() => {
                           const newPrompts = [...prompts];
-                          newPrompts[index] = { ...newPrompts[index], textPosition: "bottom" };
+                          newPrompts[index] = {
+                            ...newPrompts[index],
+                            textPosition: "bottom",
+                          };
                           updateTextPrompts(newPrompts, activeDraft.id);
                         }}
                         className="w-4 h-4 text-violet-600 focus:ring-violet-500"
@@ -465,4 +602,3 @@ export default function TextPromptGroups({
     </div>
   );
 }
-

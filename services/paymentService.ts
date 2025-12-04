@@ -54,9 +54,14 @@ export const createPaymentOrder = async (
       throw new Error(result.message || "创建订单失败");
     }
 
+    const data = result.data as {
+      orderId: string;
+      paymentParams: any;
+    };
+
     return {
-      orderId: result.data.orderId,
-      paymentParams: result.data.paymentParams,
+      orderId: data.orderId,
+      paymentParams: data.paymentParams,
     };
   } catch (error: any) {
     console.error("Create payment order error:", error);
@@ -82,7 +87,16 @@ export const queryOrderStatus = async (
       throw new Error(result.message || "查询订单失败");
     }
 
-    const orderData = result.data;
+    const orderData = result.data as {
+      orderId: string;
+      amount: number;
+      productName: string;
+      productDesc?: string;
+      paymentMethod: string;
+      status: string;
+      createdAt: number;
+      paidAt?: number;
+    };
     return {
       orderId: orderData.orderId,
       amount: orderData.amount,

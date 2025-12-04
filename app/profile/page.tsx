@@ -206,13 +206,13 @@ export default function ProfilePage() {
             className={`relative rounded-3xl p-6 text-white overflow-hidden shadow-lg transition-all duration-500 ${
               membershipPlan
                 ? membershipPlan.id === UserTier.BASIC
-                  ? "bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-200"
+                  ? "bg-linear-to-br from-blue-500 to-blue-600 shadow-blue-200"
                   : membershipPlan.id === UserTier.STANDARD
-                  ? "bg-gradient-to-br from-violet-500 to-violet-600 shadow-violet-200"
+                  ? "bg-linear-to-br from-violet-500 to-violet-600 shadow-violet-200"
                   : membershipPlan.id === UserTier.PREMIUM
-                  ? "bg-gradient-to-br from-amber-500 via-amber-600 to-orange-600 shadow-amber-200"
-                  : "bg-gradient-to-br from-slate-800 to-slate-900 shadow-slate-200"
-                : "bg-gradient-to-br from-violet-500 to-violet-600 shadow-violet-200"
+                  ? "bg-linear-to-br from-amber-500 via-amber-600 to-orange-600 shadow-amber-200"
+                  : "bg-linear-to-br from-slate-800 to-slate-900 shadow-slate-200"
+                : "bg-linear-to-br from-violet-500 to-violet-600 shadow-violet-200"
             }`}
           >
             {membershipPlan && (
@@ -223,7 +223,7 @@ export default function ProfilePage() {
 
             <div className="relative z-10 flex items-center justify-between gap-3 md:gap-4 mb-4 md:mb-6">
               <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
-                <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-xl md:text-2xl font-bold border-2 border-white/30 flex-shrink-0">
+                <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-xl md:text-2xl font-bold border-2 border-white/30 shrink-0">
                   {membershipPlan ? membershipPlan.icon : "🎨"}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -284,7 +284,7 @@ export default function ProfilePage() {
                     dispatch(clearUserInfo());
                     router.push("/");
                   }}
-                  className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg md:rounded-xl font-semibold text-xs md:text-sm flex items-center justify-center gap-1 md:gap-2 transition-colors bg-white/10 hover:bg-white/20 text-white border border-white/20 whitespace-nowrap flex-shrink-0"
+                  className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg md:rounded-xl font-semibold text-xs md:text-sm flex items-center justify-center gap-1 md:gap-2 transition-colors bg-white/10 hover:bg-white/20 text-white border border-white/20 whitespace-nowrap shrink-0"
                 >
                   <LogOut size={14} className="md:w-4 md:h-4" />
                   <span className="hidden sm:inline">退出登录</span>
@@ -410,7 +410,7 @@ export default function ProfilePage() {
           <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-violet-100 rounded-lg md:rounded-xl flex items-center justify-center flex-shrink-0">
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-violet-100 rounded-lg md:rounded-xl flex items-center justify-center shrink-0">
                   <Clock size={20} className="md:w-6 md:h-6 text-violet-600" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -426,7 +426,7 @@ export default function ProfilePage() {
               </div>
               <button
                 onClick={() => router.push("/history")}
-                className="px-4 py-2 md:px-6 md:py-2.5 bg-violet-600 text-white rounded-lg md:rounded-xl font-semibold text-xs md:text-sm hover:bg-violet-700 transition-colors flex items-center gap-1.5 md:gap-2 flex-shrink-0"
+                className="px-4 py-2 md:px-6 md:py-2.5 bg-violet-600 text-white rounded-lg md:rounded-xl font-semibold text-xs md:text-sm hover:bg-violet-700 transition-colors flex items-center gap-1.5 md:gap-2 shrink-0"
               >
                 <Clock size={14} className="md:w-4 md:h-4" />
                 <span className="hidden sm:inline">查看全部</span>

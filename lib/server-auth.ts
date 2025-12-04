@@ -30,6 +30,7 @@ export async function getServerUserInfo(): Promise<UserInfo> {
     if (!userId) {
       const today = getTodayDateString();
       return {
+        userId: "",
         userTier: UserTier.FREE,
         sceneUsage: { date: today, count: 0 },
         memeUsage: { date: today, count: 0 },
@@ -43,6 +44,7 @@ export async function getServerUserInfo(): Promise<UserInfo> {
     if (!userData) {
       const today = getTodayDateString();
       return {
+        userId: "",
         userTier: UserTier.FREE,
         sceneUsage: { date: today, count: 0 },
         memeUsage: { date: today, count: 0 },
@@ -54,6 +56,7 @@ export async function getServerUserInfo(): Promise<UserInfo> {
     console.error('Get server user info error:', error);
     const today = getTodayDateString();
     return {
+      userId: "",
       userTier: UserTier.FREE,
       sceneUsage: { date: today, count: 0 },
       memeUsage: { date: today, count: 0 },

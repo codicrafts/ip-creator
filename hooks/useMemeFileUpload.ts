@@ -1,7 +1,7 @@
 import { useRef, useCallback } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setMemeDrafts, setActiveDraftIndex } from "@/store/slices/memeSlice";
-import { MemeDraft } from "@/types";
+import { MemeDraft, AnimationType } from "@/types";
 
 export function useMemeFileUpload() {
   const dispatch = useAppDispatch();
@@ -24,7 +24,7 @@ export function useMemeFileUpload() {
           text: "",
           moodPrompt: "",
           status: "pending",
-          animation: "none",
+          animation: AnimationType.NONE,
           removeBackground: false,
           refineForeground: false,
         };

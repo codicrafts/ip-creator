@@ -4,7 +4,11 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, Sparkles, Smile, Lock } from "lucide-react";
 import { useRef, useState } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { setSourceImage, setSceneDrafts, setActiveSceneDraftIndex } from "@/store/slices/imageSlice";
+import {
+  setSourceImage,
+  setSceneDrafts,
+  setActiveSceneDraftIndex,
+} from "@/store/slices/imageSlice";
 import { setMemeDrafts, setActiveDraftIndex } from "@/store/slices/memeSlice";
 import { AnimationType } from "@/types";
 import { isFeatureDisabled } from "@/lib/feature-flags";
@@ -35,7 +39,7 @@ export default function CreatePage() {
           // 先清除旧的 sceneDrafts，确保使用 sourceImage 模式
           dispatch(setSceneDrafts([]));
           dispatch(setActiveSceneDraftIndex(0));
-          
+
           // 保存到 Redux
           dispatch(
             setSourceImage({
@@ -76,7 +80,7 @@ export default function CreatePage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-24 md:pt-16">
-      <header className="bg-white p-4 md:hidden sticky top-0 z-10 shadow-sm border-b border-gray-100 flex items-center justify-center relative">
+      <header className="bg-white p-4 md:hidden sticky top-0 z-10 shadow-sm border-b border-gray-100 flex items-center justify-center">
         <button
           onClick={() => router.push("/")}
           className="absolute left-4 p-2 hover:bg-gray-100 rounded-full transition-colors"

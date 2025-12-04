@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       finalBuffer = buffer.buffer.slice(
         buffer.byteOffset,
         buffer.byteOffset + buffer.byteLength
-      );
+      ) as ArrayBuffer;
     }
 
     // 返回图片，并设置 CORS 头

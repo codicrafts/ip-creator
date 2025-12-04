@@ -18,6 +18,7 @@ import {
 } from "@/store/slices/userSlice";
 import { sendSmsCode, verifySmsCode, login } from "@/services/authService";
 import { getUserInfo } from "@/services/userService";
+import { UserTier } from "@/types";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -95,7 +96,7 @@ export default function LoginPage() {
         setUserInfo({
           userId: userData.userId,
           phone: userData.phone,
-          userTier: userData.userTier,
+          userTier: userData.userTier as UserTier,
         })
       );
       dispatch(setSceneUsage(userData.sceneUsage));
@@ -143,7 +144,7 @@ export default function LoginPage() {
         setUserInfo({
           userId: userInfo.userId || userData.userId,
           phone: userData.phone,
-          userTier: userInfo.userTier,
+          userTier: userInfo.userTier as UserTier,
         })
       );
       dispatch(setSceneUsage(userInfo.sceneUsage));
@@ -159,7 +160,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-b from-violet-50 to-white pb-24 md:pt-16">
+    <div className="flex flex-col min-h-screen bg-linear-to-b from-violet-50 to-white pb-24 md:pt-16">
       <header className="bg-white/80 backdrop-blur-sm p-4 md:hidden sticky top-0 z-10 shadow-sm border-b border-gray-100 flex items-center">
         <button
           onClick={() => router.back()}
