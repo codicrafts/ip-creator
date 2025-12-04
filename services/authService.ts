@@ -31,6 +31,29 @@ export interface RegisterResponse {
   token?: string;
 }
 
+export interface SendSmsCodeRequest {
+  phone: string;
+}
+
+export interface SendSmsCodeResponse {
+  success: boolean;
+  message: string;
+  code?: string; // 仅开发环境返回
+}
+
+export interface VerifySmsCodeRequest {
+  phone: string;
+  code: string;
+}
+
+export interface VerifySmsCodeResponse {
+  userId: string;
+  phone: string;
+  userTier: "FREE" | "PREMIUM";
+  sceneUsage: { date: string; count: number };
+  memeUsage: { date: string; count: number };
+}
+
 /**
  * 用户登录
  * @param phone 手机号
@@ -160,5 +183,82 @@ export const getCurrentUserPhone = async (): Promise<string | null> => {
   } catch (error) {
     console.error("Failed to get user phone:", error);
     return null;
+  }
+};
+
+/**
+ * 发送短信验证码
+ * @param phone 手机号
+ * @returns 发送结果
+ */
+export const sendSmsCode = async (
+  phone: string
+): Promise<SendSmsCodeResponse> => {
+  try {
+    const response = await fetch("/api/auth/sms/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ phone }),
+    });
+
+    const result = await response.json();
+
+    if (result.success !== 1) {
+      throw new Error(result.message || "发送验证码失败");
+    }
+
+    return {
+      success: true,
+      message: result.message || "验证码已发送",
+      code: result.data?.code, // 仅开发环境有值
+    };
+  } catch (error: any) {
+    console.error("Send SMS code error:", error);
+    throw new Error(error.message || "发送验证码失败");
+  }
+};
+
+/**
+ * 验证短信验证码并登录/注册
+ * @param phone 手机号
+ * @param code 验证码
+ * @returns 登录响应
+ */
+export const verifySmsCode = async (
+  phone: string,
+  code: string
+): Promise<VerifySmsCodeResponse> => {
+  try {
+    const response = await fetch("/api/auth/sms/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ phone, code }),
+    });
+
+    const result = await response.json();
+
+    if (result.success !== 1) {
+      throw new Error(result.message || "验证失败");
+    }
+
+    const data = result.data;
+
+    // 保存用户ID到 cookie（持久化登录态）
+    setUserId(data.userId);
+
+    return {
+      userId: data.userId,
+      phone: data.phone,
+      userTier: data.userTier,
+      sceneUsage: data.sceneUsage,
+      memeUsage: data.memeUsage,
+    };
+  } catch (error: any) {
+    console.error("Verify SMS code error:", error);
+    throw new Error(error.message || "验证失败");
   }
 };

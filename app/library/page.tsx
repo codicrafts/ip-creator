@@ -27,6 +27,7 @@ import {
   setSourceImage,
   setSceneDrafts,
   setActiveSceneDraftIndex,
+  resetImageState,
 } from "@/store/slices/imageSlice";
 import { setMemeDrafts, setActiveDraftIndex } from "@/store/slices/memeSlice";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -77,14 +78,20 @@ export default function LibraryPage() {
   } | null>(null);
 
   // 加载资源
-  const loadResources = useCallback(async () => {
+  const loadResources = useCallback(async (force = false) => {
     const currentParams = {
       userId: userStatus === "LOGGED_IN" && userId ? userId : null,
       userStatus,
     };
 
+    // 如果强制刷新，重置 lastLoadParamsRef
+    if (force) {
+      lastLoadParamsRef.current = null;
+    }
+
     // 如果参数没有变化且正在加载，则跳过
     if (
+      !force &&
       loadingRef.current &&
       lastLoadParamsRef.current &&
       lastLoadParamsRef.current.userId === currentParams.userId &&
@@ -95,6 +102,7 @@ export default function LibraryPage() {
 
     // 如果参数没有变化且已经加载过，则跳过（避免重复加载相同数据）
     if (
+      !force &&
       !loadingRef.current &&
       lastLoadParamsRef.current &&
       lastLoadParamsRef.current.userId === currentParams.userId &&
@@ -172,7 +180,8 @@ export default function LibraryPage() {
       );
 
       if (resource) {
-        await loadResources();
+        // 强制刷新列表
+        await loadResources(true);
       } else {
         alert("保存资源失败，请重试");
       }
@@ -202,7 +211,8 @@ export default function LibraryPage() {
         userStatus === "LOGGED_IN" && userId ? userId : undefined
       );
       if (success) {
-        await loadResources();
+        // 强制刷新列表
+        await loadResources(true);
         setSelectedIds(
           selectedIds.filter((selectedId) => selectedId !== pendingDeleteId)
         );
@@ -231,7 +241,8 @@ export default function LibraryPage() {
         userStatus === "LOGGED_IN" && userId ? userId : undefined
       );
       if (success) {
-        await loadResources();
+        // 强制刷新列表
+        await loadResources(true);
         setSelectedIds([]);
         setIsSelectionMode(false);
       } else {
@@ -275,7 +286,8 @@ export default function LibraryPage() {
         userStatus === "LOGGED_IN" && userId ? userId : undefined
       );
       if (success) {
-        await loadResources();
+        // 强制刷新列表
+        await loadResources(true);
       } else {
         alert("更新失败，请重试");
       }
@@ -295,6 +307,8 @@ export default function LibraryPage() {
     // 先清除 localStorage 和 Redux 中的旧数据，避免混合
     clearSceneDrafts();
     dispatch(setSceneDrafts([]));
+    // 清除 sourceImage，确保使用 sceneDrafts 模式
+    dispatch(resetImageState());
 
     // 创建单个场景扩展草稿（和表情包逻辑一致）
     const sceneDraft = {
@@ -342,6 +356,8 @@ export default function LibraryPage() {
       // 先清除 localStorage 和 Redux 中的旧数据，避免混合
       clearSceneDrafts();
       dispatch(setSceneDrafts([]));
+      // 清除 sourceImage，确保使用 sceneDrafts 模式
+      dispatch(resetImageState());
 
       // 创建多个场景扩展草稿
       const sceneDrafts = selectedResources.map((resource, index) => ({

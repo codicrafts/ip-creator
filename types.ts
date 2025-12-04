@@ -41,6 +41,12 @@ export enum AnimationType {
   PULSE = "pulse",
   ZOOM = "zoom",
   SPIN = "spin",
+  BOUNCE = "bounce",
+  WIGGLE = "wiggle",
+  FADE = "fade",
+  FLIP = "flip",
+  SWING = "swing",
+  ROTATE = "rotate",
 }
 
 export interface MemeDraft {
@@ -51,10 +57,22 @@ export interface MemeDraft {
   moodPrompt: string; // e.g., "laughing out loud"
   status: "pending" | "generating" | "done" | "error";
   animation: AnimationType;
+  textPosition?: "top" | "bottom"; // 表情文案位置：上方或下方
   backgroundType?: "transparent" | "white" | "color"; // 背景类型
   backgroundColor?: string; // 背景颜色（当 backgroundType 为 'color' 时使用）
-  removeBackground?: boolean; // 抠图开关
+  removeBackground?: boolean; // 擦除背景开关
   refineForeground?: boolean; // 精炼边缘开关（更高质量，但更慢）
+  // 多分组结果（类似多场景页面的 sceneDrafts）
+  groupResults?: Array<{
+    generatedUrl: string | null;
+    status: "pending" | "generating" | "done" | "error";
+  }>;
+  // 多分组文本信息（持久化存储，避免依赖 useRef）
+  prompts?: Array<{
+    text: string;
+    moodPrompt: string;
+    textPosition?: "top" | "bottom";
+  }>;
 }
 
 // 场景扩展草稿

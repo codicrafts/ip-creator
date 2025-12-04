@@ -108,11 +108,11 @@ async function handleAuth(body: any, db: any) {
         phone: user.phone,
         userTier: user.userTier || "FREE",
         sceneUsage: user.sceneUsage || {
-          date: new Date().toLocaleDateString(),
+          date: getTodayDateString(),
           count: 0,
         },
         memeUsage: user.memeUsage || {
-          date: new Date().toLocaleDateString(),
+          date: getTodayDateString(),
           count: 0,
         },
       },
@@ -231,16 +231,37 @@ async function handleUser(body: any, db: any) {
         currentDate.getMonth() + 1
       ).padStart(2, "0")}`;
 
-      // 如果月份不同，重置计数
-      if (sceneUsage.date !== currentMonth) {
+      // 检查 sceneUsage.date 的格式
+      // 如果是日期格式（包含 "-" 且长度为 10，如 "2024-01-15"），说明是从免费用户升级的，需要重置
+      // 如果是月份格式（长度为 7，如 "2024-01"），则按月份比较
+      const isSceneDateFormat = sceneUsage.date && sceneUsage.date.length === 10 && sceneUsage.date.includes("-");
+      const isMemeDateFormat = memeUsage.date && memeUsage.date.length === 10 && memeUsage.date.includes("-");
+
+      // 如果日期格式不匹配（从免费用户升级），或者月份不同，重置计数
+      if (isSceneDateFormat || sceneUsage.date !== currentMonth) {
         sceneUsage = { date: currentMonth, count: 0 };
       } else {
         sceneUsage = { ...sceneUsage, date: currentMonth };
       }
-      if (memeUsage.date !== currentMonth) {
+      if (isMemeDateFormat || memeUsage.date !== currentMonth) {
         memeUsage = { date: currentMonth, count: 0 };
       } else {
         memeUsage = { ...memeUsage, date: currentMonth };
+      }
+
+      // 如果使用次数需要重置，更新数据库
+      if (isSceneDateFormat || isMemeDateFormat || 
+          sceneUsage.date !== user.sceneUsage?.date || 
+          memeUsage.date !== user.memeUsage?.date) {
+        await db
+          .collection("users")
+          .doc(userId)
+          .update({
+            data: {
+              sceneUsage: sceneUsage,
+              memeUsage: memeUsage,
+            },
+          });
       }
     } else {
       // 免费用户：按日重置
@@ -830,6 +851,12 @@ async function callWechatV3Native(
       reject(new Error("请求微信支付接口失败: " + err.message));
     });
 
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("请求微信支付接口超时（3分钟）"));
+    });
+
+    req.setTimeout(180000); // 3 分钟超时
     req.write(body);
     req.end();
   });
@@ -909,6 +936,12 @@ async function callWechatV3H5(
       reject(new Error("请求微信支付接口失败: " + err.message));
     });
 
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("请求微信支付接口超时（3分钟）"));
+    });
+
+    req.setTimeout(180000); // 3 分钟超时
     req.write(body);
     req.end();
   });
@@ -989,6 +1022,12 @@ async function callWechatV3QueryByOutTradeNo(
       reject(new Error("请求微信支付接口失败: " + err.message));
     });
 
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("请求微信支付接口超时（3分钟）"));
+    });
+
+    req.setTimeout(180000); // 3 分钟超时
     req.end();
   });
 }
@@ -1068,6 +1107,12 @@ async function callWechatV3QueryByTransactionId(
       reject(new Error("请求微信支付接口失败: " + err.message));
     });
 
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("请求微信支付接口超时（3分钟）"));
+    });
+
+    req.setTimeout(180000); // 3 分钟超时
     req.end();
   });
 }

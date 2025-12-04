@@ -12,6 +12,8 @@ import {
   X,
   Layers,
   Download,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import {
@@ -40,8 +42,12 @@ import {
   updateSceneUsage,
   setUserTier,
   setSceneUsage,
+  setMembershipExpiresAt,
 } from "@/store/slices/userSlice";
-import { updateSceneUsage as updateSceneUsageAPI } from "@/services/userService";
+import {
+  updateSceneUsage as updateSceneUsageAPI,
+  getUserInfo,
+} from "@/services/userService";
 import { saveHistory } from "@/services/historyService";
 import { getCurrentUserId } from "@/services/authService";
 import PaymentModal from "@/components/PaymentModal";
@@ -50,14 +56,14 @@ import Loader from "@/components/Loader";
 import { generateExtendedScene } from "@/services/geminiService";
 import { uploadImageToCloud } from "@/services/imageUploadService";
 import { PRESET_STYLES } from "@/lib/constants";
+import { getMembershipPlan } from "@/lib/membership";
 import { getProxiedImageUrl } from "@/lib/image-storage";
 import { getTodayDateString, normalizeDateString } from "@/lib/date-utils";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import JSZip from "jszip";
 
 const GUEST_DAILY_LIMIT = 1; // 游客1次
 const FREE_DAILY_LIMIT = 5; // 普通用户5次
-const PREMIUM_DAILY_LIMIT = 50; // 会员50次
 
 export default function EditPage() {
   const router = useRouter();
@@ -79,6 +85,9 @@ export default function EditPage() {
   const userId = useAppSelector((state) => state.user.userId);
   const userTier = useAppSelector((state) => state.user.userTier);
   const sceneUsage = useAppSelector((state) => state.user.sceneUsage);
+  const membershipExpiresAt = useAppSelector(
+    (state) => state.user.membershipExpiresAt
+  );
   const isPaymentModalOpen = useAppSelector(
     (state) => state.app.isPaymentModalOpen
   );
@@ -87,8 +96,11 @@ export default function EditPage() {
   );
   const initializedRef = useRef(false);
   const previousSourceImageRef = useRef<string | null>(null);
+  const originalSourceImageRef = useRef<string | null>(null); // 保存最初上传的原图
+  const originalMimeTypeRef = useRef<string>("image/png"); // 保存原图的 mimeType
   const [isInitializing, setIsInitializing] = useState(true);
   const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
+  const [isStyleExpanded, setIsStyleExpanded] = useState(false);
 
   // 判断是否是多图模式
   const isMultiImageMode = sceneDrafts && sceneDrafts.length > 0;
@@ -99,19 +111,62 @@ export default function EditPage() {
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-    // 初始化时设置 previousSourceImageRef
+    // 初始化时设置 previousSourceImageRef 和 originalSourceImageRef
     if (sourceImage) {
       previousSourceImageRef.current = sourceImage;
+      originalSourceImageRef.current = sourceImage;
+      originalMimeTypeRef.current = mimeType;
     }
     setIsInitializing(false);
   }, []);
+
+  // 同步用户额度（只在 Redux 中没有用户信息时才从后端获取）
+  // 注意：SSR 已经在 layout.tsx 中初始化了用户信息，所以这里不需要每次都调用
+  const hasSyncedRef = useRef(false);
+  useEffect(() => {
+    const syncUserQuota = async () => {
+      // 如果已经同步过，或者 Redux 中已经有用户信息，就不需要再次同步
+      if (hasSyncedRef.current || (userStatus === "LOGGED_IN" && userId && sceneUsage)) {
+        return;
+      }
+
+      if (userStatus === "LOGGED_IN" && userId) {
+        hasSyncedRef.current = true;
+        try {
+          const userInfo = await getUserInfo(userId);
+          // 更新 Redux store 中的额度
+          if (userInfo.sceneUsage) {
+            dispatch(setSceneUsage(userInfo.sceneUsage));
+          }
+          if (userInfo.userTier) {
+            dispatch(setUserTier(userInfo.userTier));
+          }
+          if (userInfo.membershipExpiresAt !== undefined) {
+            dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+          }
+        } catch (error) {
+          console.error("Failed to sync user quota:", error);
+          hasSyncedRef.current = false; // 失败时允许重试
+        }
+      }
+    };
+
+    syncUserQuota();
+  }, [userStatus, userId, dispatch, sceneUsage]);
 
   // 检测 sourceImage 变化，如果切换图片则清空之前的状态
   useEffect(() => {
     if (!sourceImage) {
       // 如果 sourceImage 变为 null，清空引用
       previousSourceImageRef.current = null;
+      originalSourceImageRef.current = null;
       return;
+    }
+
+    // 如果原图引用为空，说明是第一次设置图片，保存为原图
+    if (!originalSourceImageRef.current) {
+      originalSourceImageRef.current = sourceImage;
+      originalMimeTypeRef.current = mimeType;
     }
 
     // 检查是否需要重置：
@@ -124,23 +179,69 @@ export default function EditPage() {
       sceneDrafts.length > 0 &&
       sceneDrafts.some((draft) => draft.sourceUrl !== sourceImage);
 
+    // 只有在不是生成完成后的替换时才更新原图引用
+    // 如果 loadingState 是 SUCCESS，说明可能是生成完成后替换 sourceImage，不应该更新原图引用
+    const isAfterGeneration = loadingState === LoadingState.SUCCESS;
+
     if (imageChanged || draftsMismatch) {
       // 清空之前的生成结果和场景草稿
       dispatch(setResultImage(null));
       dispatch(setSceneDrafts([]));
       dispatch(setActiveSceneDraftIndex(0));
       dispatch(setPrompt(""));
+      // 只有在不是生成完成后替换的情况下，才更新原图引用（即用户主动切换图片）
+      if (!isAfterGeneration) {
+        originalSourceImageRef.current = sourceImage;
+        originalMimeTypeRef.current = mimeType;
+      }
     }
 
     // 更新之前的 sourceImage 引用
     previousSourceImageRef.current = sourceImage;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceImage, dispatch]); // 注意：sceneDrafts 不放在依赖数组中，避免循环更新
+  }, [sourceImage, dispatch, loadingState]); // 注意：sceneDrafts 不放在依赖数组中，避免循环更新
+
+  // 检查是否为会员（包括所有付费会员等级）
+  const isPremium = useMemo(() => {
+    return [
+      UserTier.BASIC,
+      UserTier.STANDARD,
+      UserTier.PREMIUM,
+    ].includes(userTier);
+  }, [userTier]);
+
+  // 检查会员是否过期（使用 useMemo 避免 SSR 问题）
+  const isMembershipValid = useMemo(() => {
+    if (!isPremium || !membershipExpiresAt) {
+      return false;
+    }
+    // 在 SSR 时，Date.now() 可能不可用，使用安全的检查
+    if (typeof window === "undefined") {
+      // SSR 时，假设会员有效（会在客户端重新计算）
+      return true;
+    }
+    return membershipExpiresAt > Date.now();
+  }, [isPremium, membershipExpiresAt]);
+
+  // 获取会员计划信息（使用 useMemo 缓存）
+  const membershipPlan = useMemo(() => {
+    if (isMembershipValid && userTier !== UserTier.FREE) {
+      return getMembershipPlan(userTier);
+    }
+    return null;
+  }, [isMembershipValid, userTier]);
 
   const getLimit = () => {
-    if (userTier === "PREMIUM") return PREMIUM_DAILY_LIMIT;
-    if (userStatus === "LOGGED_IN") return FREE_DAILY_LIMIT;
-    return GUEST_DAILY_LIMIT; // 游客
+    // 如果是有效会员，使用会员计划的月度额度
+    if (isMembershipValid && membershipPlan) {
+      return membershipPlan.sceneQuota;
+    }
+    // 如果是已登录用户，使用免费额度
+    if (userStatus === "LOGGED_IN") {
+      return FREE_DAILY_LIMIT;
+    }
+    // 游客
+    return GUEST_DAILY_LIMIT;
   };
   const isQuotaReached = (amount = 1) => {
     const today = getTodayDateString();
@@ -162,13 +263,34 @@ export default function EditPage() {
     // 如果正在生成中，禁用按钮
     if (loadingState === LoadingState.GENERATING) return false;
     if (isQuotaReached()) return false;
+
     if (isMultiImageMode) {
-      // 多场景模式：至少有一个场景有提示词
+      // 多场景模式：如果有完成的场景，允许重新生成；否则至少有一个场景有提示词
+      if (allScenesCompleted()) return true;
       return sceneDrafts.some((draft) => draft.prompt && draft.prompt.trim());
     } else {
-      // 单场景模式：主提示词不为空
-      return prompt.trim().length > 0;
+      // 单场景模式：
+      // 1. 如果有生成结果（resultImage）或加载状态是成功，且提示词不为空，允许重新生成
+      // 2. 否则检查提示词不为空
+      const hasGenerated = resultImage || loadingState === LoadingState.SUCCESS;
+      const hasPrompt = prompt.trim().length > 0;
+      // 如果已经生成过，需要提示词不为空才能重新生成
+      if (hasGenerated) {
+        return hasPrompt;
+      }
+      // 如果还没生成过，需要提示词不为空才能生成
+      return hasPrompt;
     }
+  };
+
+  // 检查是否所有场景都已生成完成
+  const allScenesCompleted = () => {
+    if (!isMultiImageMode || !sceneDrafts || sceneDrafts.length === 0) {
+      return false;
+    }
+    return sceneDrafts.every(
+      (draft) => draft.status === "done" && draft.generatedUrl
+    );
   };
 
   // 批量下载所有生成完成的场景图片
@@ -224,11 +346,28 @@ export default function EditPage() {
   };
 
   const handleGenerate = async () => {
+    // 如果是多场景模式且所有场景都已完成，重置为 pending 状态以便重新生成
+    if (isMultiImageMode && allScenesCompleted()) {
+      sceneDrafts.forEach((draft, idx) => {
+        if (draft.status === "done") {
+          dispatch(
+            updateSceneDraft({
+              index: idx,
+              draft: { status: "pending" as const },
+            })
+          );
+        }
+      });
+    }
+
     // 先检查次数
     const pendingCount =
       isMultiImageMode && sceneDrafts
         ? sceneDrafts.filter(
-            (d) => d.status === "pending" || d.status === "error"
+            (d) =>
+              d.status === "pending" ||
+              d.status === "error" ||
+              d.status === "done"
           ).length
         : 1;
 
@@ -289,9 +428,15 @@ export default function EditPage() {
           prompts = [finalPrompt];
         }
 
+        // 重新生成时使用原图，而不是生成后的图片
+        const imageToUse = originalSourceImageRef.current || sourceImage;
+        const mimeTypeToUse = originalSourceImageRef.current
+          ? originalMimeTypeRef.current
+          : mimeType;
+
         const result = await generateExtendedScene(
-          sourceImage,
-          mimeType,
+          imageToUse,
+          mimeTypeToUse,
           prompts,
           aspectRatio
         );
@@ -394,15 +539,122 @@ export default function EditPage() {
     }
   };
 
+  // 重试或重新生成单个场景
+  const handleRetryScene = async (index: number) => {
+    if (!sceneDrafts || index >= sceneDrafts.length) return;
+
+    const draft = sceneDrafts[index];
+    if (!draft || (draft.status !== "error" && draft.status !== "done")) return;
+
+    // 检查配额
+    if (isQuotaReached(1)) {
+      dispatch(setIsQuotaModalOpen(true));
+      return;
+    }
+
+    try {
+      // 设置状态为生成中
+      dispatch(
+        updateSceneDraft({
+          index,
+          draft: { status: "generating" },
+        })
+      );
+
+      let finalPrompt = draft.prompt || prompt;
+      let styleLabels = draft.style || "";
+      if (selectedStyle && !draft.style) {
+        const styleObj = PRESET_STYLES.find((s) => s.id === selectedStyle);
+        if (styleObj) {
+          styleLabels = styleObj.label;
+          finalPrompt = `${draft.prompt || prompt}. Style modifiers: ${
+            styleObj.value
+          }`;
+        }
+      }
+
+      const result = await generateExtendedScene(
+        draft.sourceUrl,
+        draft.sourceMimeType,
+        finalPrompt,
+        aspectRatio
+      );
+
+      // 上传图片到云存储
+      let cloudImageUrl = result;
+      if (result.startsWith("data:image")) {
+        let detectedMimeType = "image/png";
+        if (result.startsWith("data:image/png")) {
+          detectedMimeType = "image/png";
+        } else if (
+          result.startsWith("data:image/jpeg") ||
+          result.startsWith("data:image/jpg")
+        ) {
+          detectedMimeType = "image/jpeg";
+        } else if (result.startsWith("data:image/webp")) {
+          detectedMimeType = "image/webp";
+        }
+
+        const uploadResult = await uploadImageToCloud(
+          result,
+          undefined,
+          detectedMimeType
+        );
+        if (uploadResult && uploadResult.url) {
+          cloudImageUrl = uploadResult.url;
+        } else {
+          console.warn("Failed to upload image to cloud, using base64 URL");
+        }
+      }
+
+      // 更新草稿状态
+      dispatch(
+        updateSceneDraft({
+          index,
+          draft: { generatedUrl: cloudImageUrl, status: "done" },
+        })
+      );
+
+      // 保存历史记录
+      await saveHistory(
+        "scene",
+        cloudImageUrl,
+        draft.prompt || prompt,
+        styleLabels
+      );
+
+      // 场景扩展生成成功，增加使用次数
+      dispatch(updateSceneUsage(1));
+
+      // 如果用户已登录，同步到后端
+      if (userStatus === "LOGGED_IN" && userId) {
+        try {
+          const updatedUsage = await updateSceneUsageAPI(userId, 1);
+          dispatch(setSceneUsage(updatedUsage));
+        } catch (error) {
+          console.error("Failed to sync scene usage to backend:", error);
+        }
+      }
+    } catch (err) {
+      console.error(`重试场景 ${index + 1} 失败:`, err);
+      dispatch(updateSceneDraft({ index, draft: { status: "error" } }));
+    }
+  };
+
   // 批量生成场景扩展
   const handleBatchGenerate = async () => {
     if (!sceneDrafts || sceneDrafts.length === 0) return;
 
     dispatch(setLoadingState(LoadingState.GENERATING));
 
-    for (let i = 0; i < sceneDrafts.length; i++) {
-      const draft = sceneDrafts[i];
-      if (draft.status !== "pending" && draft.status !== "error") continue;
+    // 并行处理所有草稿
+    const generationPromises = sceneDrafts.map(async (draft, i) => {
+      if (
+        draft.status !== "pending" &&
+        draft.status !== "error" &&
+        draft.status !== "done"
+      )
+        return;
 
       try {
         dispatch(
@@ -490,7 +742,10 @@ export default function EditPage() {
         console.error("Scene generation error:", err);
         dispatch(updateSceneDraft({ index: i, draft: { status: "error" } }));
       }
-    }
+    });
+
+    // 等待所有生成任务完成
+    await Promise.allSettled(generationPromises);
 
     dispatch(setLoadingState(LoadingState.SUCCESS));
   };
@@ -530,9 +785,10 @@ export default function EditPage() {
         </div>
       </header>
 
-      <div className="flex-1 p-6 md:p-12 space-y-6 overflow-y-auto max-w-6xl mx-auto w-full">
-        {/* PC端消耗次数展示 */}
-        <div className="hidden md:flex items-center justify-end mb-2">
+      <div className="flex-1 p-6 md:p-12 space-y-6 max-w-6xl mx-auto w-full">
+        {/* PC端消耗次数展示和下载按钮 */}
+        <div className="hidden md:flex items-center justify-between mb-2">
+          {/* 额度显示 */}
           <div
             className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full border ${
               quotaReached
@@ -545,51 +801,106 @@ export default function EditPage() {
               {remainingQuota()} / {getLimit()}
             </span>
           </div>
+          {/* 下载按钮（仅在多图模式且有多个完成时显示） */}
+          {isMultiImageMode &&
+            sceneDrafts &&
+            sceneDrafts.filter((d) => d.status === "done" && d.generatedUrl)
+              .length > 1 && (
+              <button
+                onClick={handleBatchDownload}
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-full hover:bg-violet-700 transition-colors font-medium text-sm"
+              >
+                <Download size={16} />
+                批量下载所有场景 (
+                {
+                  sceneDrafts.filter(
+                    (d) => d.status === "done" && d.generatedUrl
+                  ).length
+                }{" "}
+                张)
+              </button>
+            )}
         </div>
 
         <div className="md:grid md:grid-cols-2 md:gap-8 md:items-start">
           {/* Left Column - Image Preview */}
-          <div className="space-y-6 mt-4 md:mt-8">
+          <div
+            className="space-y-6 mt-4 md:mt-8 md:sticky md:top-20 md:self-start"
+            style={{
+              transition: "transform 0.2s ease-out, opacity 0.2s ease-out",
+            }}
+          >
             {isMultiImageMode ? (
               // 多图模式：显示多个图片
               <div className="space-y-4">
                 {activeDraft ? (
+                  <>
+                    {/* 原图展示区域（多图模式） */}
+                    {activeDraft.sourceUrl && (
+                      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <ImageIcon size={16} className="text-gray-500" />
+                          <span className="text-sm font-medium text-gray-700">原图</span>
+                        </div>
+                        <div className="w-full h-32 md:h-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-gray-100 rounded-xl overflow-hidden">
+                          <img
+                            src={getProxiedImageUrl(activeDraft.sourceUrl)}
+                            alt="Original Image"
+                            className="w-full h-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                              setViewingImageUrl(getProxiedImageUrl(activeDraft.sourceUrl));
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
                   <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 relative">
-                    <img
-                      src={getProxiedImageUrl(
-                        activeDraft.generatedUrl || activeDraft.sourceUrl
-                      )}
-                      alt="Active Preview"
-                      className={`w-full h-48 md:h-64 object-contain bg-gray-100 rounded-xl ${
+                    <div className={`w-full h-48 md:h-64 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-gray-100 rounded-xl overflow-hidden ${
+                      activeDraft.status === "done" &&
+                      activeDraft.generatedUrl
+                        ? "cursor-pointer"
+                        : ""
+                    }`}
+                    onClick={() => {
+                      if (
                         activeDraft.status === "done" &&
                         activeDraft.generatedUrl
-                          ? "cursor-pointer hover:opacity-90 transition-opacity"
-                          : ""
-                      }`}
-                      onClick={() => {
-                        if (
+                      ) {
+                        setViewingImageUrl(
+                          getProxiedImageUrl(activeDraft.generatedUrl)
+                        );
+                      }
+                    }}>
+                      <img
+                        src={getProxiedImageUrl(
+                          activeDraft.generatedUrl || activeDraft.sourceUrl
+                        )}
+                        alt="Active Preview"
+                        className={`w-full h-full object-contain ${
                           activeDraft.status === "done" &&
                           activeDraft.generatedUrl
-                        ) {
-                          setViewingImageUrl(
-                            getProxiedImageUrl(activeDraft.generatedUrl)
-                          );
-                        }
-                      }}
-                    />
+                            ? "hover:opacity-90 transition-opacity"
+                            : ""
+                        }`}
+                      />
+                    </div>
                     {activeDraft.status === "generating" && (
                       <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
                       </div>
                     )}
                   </div>
+                  </>
                 ) : sourceImage ? (
                   <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                    <img
-                      src={sourceImage}
-                      alt="Preview"
-                      className="w-full h-48 md:h-64 object-contain bg-gray-100 rounded-xl"
-                    />
+                    <div className="w-full h-48 md:h-64 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-gray-100 rounded-xl overflow-hidden">
+                      <img
+                        src={sourceImage}
+                        alt="Preview"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
@@ -601,8 +912,7 @@ export default function EditPage() {
                 )}
                 {/* 只显示有生成结果的场景缩略图，如果都没有生成结果则不显示缩略图列表 */}
                 {sceneDrafts &&
-                  sceneDrafts.length > 1 &&
-                  sceneDrafts.some((d) => d.generatedUrl) && (
+                  sceneDrafts.length > 1 && (
                     <div className="space-y-2">
                       <div className="flex gap-2 overflow-x-auto max-w-full p-2 bg-white/50 rounded-xl backdrop-blur-md md:flex-wrap md:justify-center">
                         {sceneDrafts.map((draft, idx) => (
@@ -638,42 +948,47 @@ export default function EditPage() {
                           </div>
                         ))}
                       </div>
-                      {/* 批量下载按钮 */}
-                      {sceneDrafts.filter(
-                        (d) => d.status === "done" && d.generatedUrl
-                      ).length > 1 && (
-                        <button
-                          onClick={handleBatchDownload}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium text-sm"
-                        >
-                          <Download size={16} />
-                          批量下载所有场景 (
-                          {
-                            sceneDrafts.filter(
-                              (d) => d.status === "done" && d.generatedUrl
-                            ).length
-                          }{" "}
-                          张)
-                        </button>
-                      )}
                     </div>
                   )}
               </div>
             ) : (
               // 单图模式：原有显示
+              <div className="space-y-4">
+                {/* 原图展示区域 */}
+                {originalSourceImageRef.current && originalSourceImageRef.current !== sourceImage && (
+                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ImageIcon size={16} className="text-gray-500" />
+                      <span className="text-sm font-medium text-gray-700">原图</span>
+                    </div>
+                    <img
+                      src={getProxiedImageUrl(originalSourceImageRef.current)}
+                      alt="Original Image"
+                      className="w-full h-32 md:h-40 object-contain bg-gray-100 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => {
+                        setViewingImageUrl(getProxiedImageUrl(originalSourceImageRef.current!));
+                      }}
+                    />
+                  </div>
+                )}
+                
               <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 relative">
                 {sourceImage ? (
                   <>
-                    <img
-                      src={getProxiedImageUrl(sourceImage)}
-                      alt="Preview"
-                      className="w-full h-48 md:h-64 object-contain bg-gray-100 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                    <div 
+                      className="w-full h-48 md:h-64 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-gray-100 rounded-xl overflow-hidden cursor-pointer"
                       onClick={() => {
                         if (loadingState !== LoadingState.GENERATING) {
                           setViewingImageUrl(getProxiedImageUrl(sourceImage));
                         }
                       }}
-                    />
+                    >
+                      <img
+                        src={getProxiedImageUrl(sourceImage)}
+                        alt="Preview"
+                        className="w-full h-full object-contain hover:opacity-90 transition-opacity"
+                      />
+                    </div>
                     {loadingState === LoadingState.GENERATING && (
                       <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl">
                         <div className="flex flex-col items-center gap-2">
@@ -689,6 +1004,7 @@ export default function EditPage() {
                     <p className="text-sm text-gray-400">请先上传图片</p>
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>
@@ -709,21 +1025,78 @@ export default function EditPage() {
                 </label>
                 <button
                   onClick={() => {
-                    if (!sourceImage || sceneDrafts.length >= 5) return;
-                    const newDraft: SceneDraft = {
-                      id: `scene-${Date.now()}`,
-                      sourceUrl: sourceImage,
-                      sourceMimeType: mimeType,
-                      generatedUrl: null,
-                      prompt: "",
-                      status: "pending",
-                    };
-                    dispatch(addSceneDraft(newDraft));
-                    dispatch(setActiveSceneDraftIndex(sceneDrafts.length));
+                    if (
+                      !sourceImage ||
+                      sceneDrafts.length >= 5 ||
+                      loadingState === LoadingState.GENERATING ||
+                      sceneDrafts.some((d) => d.status === "generating")
+                    )
+                      return;
+
+                    // 使用最初的原图，确保基于原图进行扩展
+                    const imageToUse = originalSourceImageRef.current || sourceImage;
+                    const mimeTypeToUse = originalSourceImageRef.current
+                      ? originalMimeTypeRef.current
+                      : mimeType;
+
+                    // 如果是从单场景模式切换到多场景模式（sceneDrafts 为空）
+                    if (sceneDrafts.length === 0) {
+                      const firstDraft: SceneDraft = {
+                        id: `scene-${Date.now()}-1`,
+                        sourceUrl: imageToUse,
+                        sourceMimeType: mimeTypeToUse,
+                        generatedUrl: null, // 重置生成结果，重新基于原图生成
+                        prompt: prompt, // 保留当前提示词
+                        status: "pending",
+                      };
+                      
+                      const secondDraft: SceneDraft = {
+                        id: `scene-${Date.now()}-2`,
+                        sourceUrl: imageToUse,
+                        sourceMimeType: mimeTypeToUse,
+                        generatedUrl: null,
+                        prompt: "",
+                        status: "pending",
+                      };
+
+                      // 批量设置草稿
+                      dispatch(setSceneDrafts([firstDraft, secondDraft]));
+                      dispatch(setActiveSceneDraftIndex(1)); // 选中第二个（新的）
+
+                      // 恢复 sourceImage 为原图（如果之前被生成结果替换了）
+                      if (sourceImage !== imageToUse) {
+                        dispatch(setSourceImage({ image: imageToUse, mimeType: mimeTypeToUse }));
+                        dispatch(setResultImage(null));
+                      }
+                    } else {
+                      // 已经是多场景模式，直接添加新场景
+                      const newDraft: SceneDraft = {
+                        id: `scene-${Date.now()}`,
+                        sourceUrl: imageToUse,
+                        sourceMimeType: mimeTypeToUse,
+                        generatedUrl: null,
+                        prompt: "",
+                        status: "pending",
+                      };
+                      dispatch(addSceneDraft(newDraft));
+                      dispatch(setActiveSceneDraftIndex(sceneDrafts.length));
+                    }
                   }}
-                  disabled={!sourceImage || sceneDrafts.length >= 5}
+                  disabled={
+                    !sourceImage ||
+                    sceneDrafts.length >= 5 ||
+                    loadingState === LoadingState.GENERATING ||
+                    sceneDrafts.some((d) => d.status === "generating")
+                  }
                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={sceneDrafts.length >= 5 ? "最多只能添加5个场景" : ""}
+                  title={
+                    sceneDrafts.length >= 5
+                      ? "最多只能添加5个场景"
+                      : loadingState === LoadingState.GENERATING ||
+                        sceneDrafts.some((d) => d.status === "generating")
+                      ? "生成中，请稍候..."
+                      : ""
+                  }
                 >
                   <Plus size={14} />
                   添加场景
@@ -780,26 +1153,48 @@ export default function EditPage() {
                             <span className="text-xs text-red-600">✗ 失败</span>
                           )}
                         </div>
-                        {sceneDrafts.length > 1 && (
-                          <button
-                            onClick={() => {
-                              dispatch(removeSceneDraft(index));
-                              if (
-                                activeSceneDraftIndex >=
-                                sceneDrafts.length - 1
-                              ) {
-                                dispatch(
-                                  setActiveSceneDraftIndex(
-                                    Math.max(0, sceneDrafts.length - 2)
-                                  )
-                                );
-                              }
-                            }}
-                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                          >
-                            <X size={16} />
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {draft.status === "error" && (
+                            <button
+                              onClick={() => handleRetryScene(index)}
+                              disabled={loadingState === LoadingState.GENERATING || sceneDrafts.some((d) => d.status === "generating")}
+                              className="px-2 py-1 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="重试生成"
+                            >
+                              重试
+                            </button>
+                          )}
+                          {draft.status === "done" && (
+                            <button
+                              onClick={() => handleRetryScene(index)}
+                              disabled={loadingState === LoadingState.GENERATING || sceneDrafts.some((d) => d.status === "generating")}
+                              className="px-2 py-1 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="重新生成"
+                            >
+                              重新生成
+                            </button>
+                          )}
+                          {sceneDrafts.length > 1 && (
+                            <button
+                              onClick={() => {
+                                dispatch(removeSceneDraft(index));
+                                if (
+                                  activeSceneDraftIndex >=
+                                  sceneDrafts.length - 1
+                                ) {
+                                  dispatch(
+                                    setActiveSceneDraftIndex(
+                                      Math.max(0, sceneDrafts.length - 2)
+                                    )
+                                  );
+                                }
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                              <X size={16} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <textarea
                         value={draft.prompt || ""}
@@ -832,8 +1227,19 @@ export default function EditPage() {
                 艺术风格
               </label>
               <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-                {PRESET_STYLES.map((style) => {
+                {PRESET_STYLES.map((style, index) => {
+                  // Index 8+ only show when expanded
+                  if (!isStyleExpanded && index >= 8) return null;
+
                   const isSelected = selectedStyle === style.id;
+                  
+                  // Index 6-7: Hidden on mobile when collapsed, visible on desktop
+                  // Index 0-5: Always visible
+                  // Index 8+: Handled by the return null above
+                  const visibilityClass = (!isStyleExpanded && index >= 6 && index < 8) 
+                    ? "hidden md:flex" 
+                    : "flex";
+
                   return (
                     <button
                       key={style.id}
@@ -841,8 +1247,9 @@ export default function EditPage() {
                         dispatch(setSelectedStyle(isSelected ? null : style.id))
                       }
                       className={`
+                        ${visibilityClass}
                         relative px-2 py-3 rounded-xl text-xs md:text-sm font-medium transition-all duration-200 border
-                        flex flex-col items-center justify-center gap-1 overflow-hidden
+                        flex-col items-center justify-center gap-1 overflow-hidden
                         ${
                           isSelected
                             ? "bg-violet-50 border-violet-500 text-violet-700 shadow-sm ring-1 ring-violet-200"
@@ -859,6 +1266,24 @@ export default function EditPage() {
                     </button>
                   );
                 })}
+              </div>
+              <div className="flex justify-center mt-2">
+                <button
+                  onClick={() => setIsStyleExpanded(!isStyleExpanded)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-violet-600 transition-colors py-1 px-3 rounded-full hover:bg-gray-100"
+                >
+                  {isStyleExpanded ? (
+                    <>
+                      <span>收起</span>
+                      <ChevronUp size={14} />
+                    </>
+                  ) : (
+                    <>
+                      <span>展开更多风格</span>
+                      <ChevronDown size={14} />
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -974,7 +1399,11 @@ export default function EditPage() {
           ) : (
             <>
               <Sparkles size={18} />
-              立即生成
+              {(isMultiImageMode && allScenesCompleted()) ||
+              (!isMultiImageMode &&
+                (resultImage || loadingState === LoadingState.SUCCESS))
+                ? "重新生成"
+                : "立即生成"}
             </>
           )}
         </button>

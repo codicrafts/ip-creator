@@ -8,12 +8,13 @@ import { UserStatus } from "@/store/slices/userSlice";
 import { GeneratedImage, UserTier } from "@/types";
 import { UserInfo } from "@/services/userService";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import { getTodayDateString } from "@/lib/date-utils";
 
 const TRACKING_ID = "G-RKP0BDSH43";
 
 export const metadata: Metadata = {
   title: "IP 创想坊",
-  description: "AI 赋能创意，一键生成场景与表情包",
+  description: "一键生成场景与表情包，打造属于你的 IP 生态",
 };
 
 // 标记为动态渲染，因为使用了 cookies
@@ -32,7 +33,7 @@ export default async function RootLayout({
     userInfo = await getServerUserInfo();
   } catch (error) {
     console.error("Get server user info error:", error);
-    const today = new Date().toLocaleDateString();
+    const today = getTodayDateString();
     userInfo = {
       userId: undefined,
       phone: undefined,
@@ -66,10 +67,6 @@ export default async function RootLayout({
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-        />
-        <Script
-          src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"
-          strategy="lazyOnload"
         />
       </head>
       <body

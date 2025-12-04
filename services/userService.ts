@@ -1,6 +1,7 @@
 import { UserTier, DailyUsage } from "@/types";
 import { callCloudFunction } from "@/lib/cloud";
 import { getUserId } from "@/lib/cookies";
+import { getTodayDateString } from "@/lib/date-utils";
 
 export interface UserInfo {
   userId?: string;
@@ -24,8 +25,8 @@ export const getUserInfo = async (userId?: string): Promise<UserInfo> => {
     if (!storedUserId) {
       return {
         userTier: UserTier.FREE,
-        sceneUsage: { date: new Date().toLocaleDateString(), count: 0 },
-        memeUsage: { date: new Date().toLocaleDateString(), count: 0 },
+        sceneUsage: { date: getTodayDateString(), count: 0 },
+        memeUsage: { date: getTodayDateString(), count: 0 },
       };
     }
 
@@ -41,8 +42,8 @@ export const getUserInfo = async (userId?: string): Promise<UserInfo> => {
       if (response.message === "用户不存在") {
         return {
           userTier: UserTier.FREE,
-          sceneUsage: { date: new Date().toLocaleDateString(), count: 0 },
-          memeUsage: { date: new Date().toLocaleDateString(), count: 0 },
+          sceneUsage: { date: getTodayDateString(), count: 0 },
+          memeUsage: { date: getTodayDateString(), count: 0 },
         };
       }
       throw new Error(response.message || "获取用户信息失败");
@@ -55,11 +56,11 @@ export const getUserInfo = async (userId?: string): Promise<UserInfo> => {
       phone: data.phone,
       userTier: data.userTier || UserTier.FREE,
       sceneUsage: data.sceneUsage || {
-        date: new Date().toLocaleDateString(),
+        date: getTodayDateString(),
         count: 0,
       },
       memeUsage: data.memeUsage || {
-        date: new Date().toLocaleDateString(),
+        date: getTodayDateString(),
         count: 0,
       },
       membershipExpiresAt: data.membershipExpiresAt || null,
@@ -69,8 +70,8 @@ export const getUserInfo = async (userId?: string): Promise<UserInfo> => {
     // 返回默认值而不是抛出错误，确保应用可以继续运行
     return {
       userTier: UserTier.FREE,
-      sceneUsage: { date: new Date().toLocaleDateString(), count: 0 },
-      memeUsage: { date: new Date().toLocaleDateString(), count: 0 },
+      sceneUsage: { date: getTodayDateString(), count: 0 },
+      memeUsage: { date: getTodayDateString(), count: 0 },
     };
   }
 };
@@ -203,11 +204,11 @@ export const createOrInitUser = async (): Promise<UserInfo> => {
       userId: data.userId,
       userTier: data.userTier || UserTier.FREE,
       sceneUsage: data.sceneUsage || {
-        date: new Date().toLocaleDateString(),
+        date: getTodayDateString(),
         count: 0,
       },
       memeUsage: data.memeUsage || {
-        date: new Date().toLocaleDateString(),
+        date: getTodayDateString(),
         count: 0,
       },
     };

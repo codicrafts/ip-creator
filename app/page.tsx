@@ -64,7 +64,7 @@ export default function HomePage() {
             </span>
           </div>
           <p className="text-gray-500 max-w-xs md:max-w-md mx-auto leading-relaxed text-sm md:text-base">
-            AI 赋能创意，一键生成场景与表情包
+            一键生成场景与表情包，打造属于你的 IP 生态
           </p>
         </div>
 

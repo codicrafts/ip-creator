@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
       signature
     );
 
-    // 调用微信支付接口
+    // 调用微信支付接口（带超时）
     const result = await new Promise<any>((resolve, reject) => {
       const options = {
         hostname: "api.mch.weixin.qq.com",
@@ -180,6 +180,7 @@ export async function GET(request: NextRequest) {
           Accept: "application/json",
           "User-Agent": "WeChatPay-APIv3-NodeJS",
         },
+        timeout: 180000, // 3 分钟超时
       };
 
       const req = https.request(options, (res) => {
@@ -207,6 +208,11 @@ export async function GET(request: NextRequest) {
 
       req.on("error", (err) => {
         reject(new Error("请求微信支付接口失败: " + err.message));
+      });
+
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("请求微信支付接口超时（3分钟）"));
       });
 
       req.end();

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, Sparkles, Smile, Lock } from "lucide-react";
 import { useRef, useState } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { setSourceImage } from "@/store/slices/imageSlice";
+import { setSourceImage, setSceneDrafts, setActiveSceneDraftIndex } from "@/store/slices/imageSlice";
 import { setMemeDrafts, setActiveDraftIndex } from "@/store/slices/memeSlice";
 import { AnimationType } from "@/types";
 import { isFeatureDisabled } from "@/lib/feature-flags";
@@ -32,6 +32,10 @@ export default function CreatePage() {
 
         if (uploadMode === "scene") {
           // 场景扩展模式
+          // 先清除旧的 sceneDrafts，确保使用 sourceImage 模式
+          dispatch(setSceneDrafts([]));
+          dispatch(setActiveSceneDraftIndex(0));
+          
           // 保存到 Redux
           dispatch(
             setSourceImage({

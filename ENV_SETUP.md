@@ -237,6 +237,83 @@ cat rsa_public_key.pem
 - 推荐使用 RSA2（2048 位）签名方式，安全性更高
 - 沙箱环境用于测试，正式环境用于生产
 
+### 阿里云短信服务配置（用于短信验证码登录）
+
+```env
+# 阿里云 AccessKey ID
+# 从阿里云控制台获取：https://ram.console.aliyun.com/manage/ak
+ALIYUN_ACCESS_KEY_ID=your_access_key_id_here
+
+# 阿里云 AccessKey Secret
+# 从阿里云控制台获取：https://ram.console.aliyun.com/manage/ak
+ALIYUN_ACCESS_KEY_SECRET=your_access_key_secret_here
+
+# 短信签名名称
+# 在阿里云短信服务控制台申请：https://dysms.console.aliyun.com/
+ALIYUN_SMS_SIGN_NAME=your_sign_name_here
+
+# 短信模板代码
+# 在阿里云短信服务控制台申请验证码模板，获取模板CODE
+ALIYUN_SMS_TEMPLATE_CODE=SMS_123456789
+```
+
+#### 获取配置信息：
+
+1. **开通阿里云短信服务**：
+   - 访问 [阿里云短信服务控制台](https://dysms.console.aliyun.com/)
+   - 按照提示开通短信服务
+
+2. **申请短信签名**：
+   - 在短信服务控制台，选择"国内消息" > "签名管理"
+   - 点击"添加签名"，填写签名信息（如：您的应用名称）
+   - 提交后等待审核通过（通常1-2个工作日）
+   - 审核通过后，将签名名称填入 `ALIYUN_SMS_SIGN_NAME`
+
+3. **申请短信模板**：
+   - 在短信服务控制台，选择"国内消息" > "模板管理"
+   - 点击"添加模板"，选择"验证码"类型
+   - 填写模板内容，例如：`您的验证码是${code}，5分钟内有效，请勿泄露给他人。`
+   - 提交后等待审核通过（通常1-2个工作日）
+   - 审核通过后，将模板CODE填入 `ALIYUN_SMS_TEMPLATE_CODE`
+
+4. **获取 AccessKey**：
+   - 登录 [阿里云控制台](https://ram.console.aliyun.com/manage/ak)
+   - 进入"AccessKey 管理"页面
+   - 创建新的 AccessKey，获取 `AccessKey ID` 和 `AccessKey Secret`
+   - **注意**：AccessKey Secret 只显示一次，请妥善保管
+
+#### 注意事项：
+
+- **短信模板规范**：
+  - 验证码模板必须包含 `${code}` 变量
+  - 模板内容需符合 [验证码模板申请与审核规范](https://help.aliyun.com/zh/sms/user-guide/verification-code-template-specifications)
+  - 建议在模板中说明验证码有效期（如：5分钟内有效）
+
+- **安全提示**：
+  - `AccessKey Secret` 是敏感信息，请妥善保管，不要泄露
+  - 不要将 `AccessKey Secret` 暴露在前端代码中
+  - 建议定期更换 AccessKey
+  - 生产环境建议使用 RAM 子账号，并授予最小权限
+
+- **费用说明**：
+  - 阿里云短信服务按条计费
+  - 验证码短信通常价格较低（约0.04-0.05元/条）
+  - 建议设置每日发送上限，防止恶意刷量
+
+- **开发环境测试**：
+  - 开发环境下，发送验证码成功后会返回验证码内容（方便测试）
+  - 生产环境不会返回验证码，确保安全性
+
+#### 配置示例（.env.local）：
+
+```env
+# 阿里云短信服务配置
+ALIYUN_ACCESS_KEY_ID=LTAI5txxxxxxxxxxxxx
+ALIYUN_ACCESS_KEY_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ALIYUN_SMS_SIGN_NAME=IP创想坊
+ALIYUN_SMS_TEMPLATE_CODE=SMS_123456789
+```
+
 ### 支付 API 地址（已废弃，不再需要）
 
 ```env

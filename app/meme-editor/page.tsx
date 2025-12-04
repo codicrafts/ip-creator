@@ -1,19 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   ChevronLeft,
-  Layers,
-  Play,
-  Smile,
-  Wand2,
   Package,
   Loader2,
   Activity,
-  RefreshCcw,
   Zap,
-  Sparkles,
+  Download,
+  ImageIcon,
 } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import {
@@ -23,35 +19,46 @@ import {
   setSelectedMoodPack,
   setIsExporting,
 } from "@/store/slices/memeSlice";
-import { updateMemeUsage, setMemeUsage } from "@/store/slices/userSlice";
-import { updateMemeUsage as updateMemeUsageAPI } from "@/services/userService";
+import {
+  updateMemeUsage,
+  setMemeUsage,
+  setUserTier,
+  setMembershipExpiresAt,
+} from "@/store/slices/userSlice";
+import {
+  updateMemeUsage as updateMemeUsageAPI,
+  getUserInfo,
+} from "@/services/userService";
 import { saveHistory } from "@/services/historyService";
 import {
   setIsPaymentModalOpen,
   setIsQuotaModalOpen,
 } from "@/store/slices/appSlice";
-import { setUserTier } from "@/store/slices/userSlice";
-import { UserTier } from "@/types";
+import { UserTier, MemeDraft } from "@/types";
+import { getMembershipPlan } from "@/lib/membership";
 import { generateSticker } from "@/services/geminiService";
-import { MOOD_PACKS, ANIMATION_OPTIONS } from "@/lib/constants";
+import { MOOD_PACKS } from "@/lib/constants";
 import { getTodayDateString, normalizeDateString } from "@/lib/date-utils";
 import { AnimationType } from "@/types";
 import Loader from "@/components/Loader";
 import PaymentModal from "@/components/PaymentModal";
 import QuotaModal from "@/components/QuotaModal";
-import { uploadImageToCloud } from "@/services/imageUploadService";
 import { getProxiedImageUrl } from "@/lib/image-storage";
-import {
-  removeBackground,
-  BackgroundRemovalError,
-} from "@/services/backgroundRemovalService";
-import JSZip from "jszip";
-
-declare global {
-  interface Window {
-    gifshot?: any;
-  }
-}
+import MemePreview from "@/components/meme-editor/MemePreview";
+import QuotaDisplay from "@/components/meme-editor/QuotaDisplay";
+import TextPromptGroups from "@/components/meme-editor/TextPromptGroups";
+import AnimationSelector from "@/components/meme-editor/AnimationSelector";
+import BackgroundRemovalControls from "@/components/meme-editor/BackgroundRemovalControls";
+import DraftThumbnails from "@/components/meme-editor/DraftThumbnails";
+import GroupThumbnails from "@/components/meme-editor/GroupThumbnails";
+import GenerateButton from "@/components/meme-editor/GenerateButton";
+import { useQuota } from "@/hooks/useQuota";
+import { useTextPrompts } from "@/hooks/useTextPrompts";
+import { useMemePreview } from "@/hooks/useMemePreview";
+import { useMemeFileUpload } from "@/hooks/useMemeFileUpload";
+import { useMemeGeneration } from "@/hooks/useMemeGeneration";
+import { useMemeExport } from "@/hooks/useMemeExport";
+import { useFFmpeg } from "@/hooks/useFFmpeg";
 
 export default function MemeEditorPage() {
   const router = useRouter();
@@ -68,6 +75,12 @@ export default function MemeEditorPage() {
   const userStatus = useAppSelector((state) => state.user.status);
   const userId = useAppSelector((state) => state.user.userId);
   const userTier = useAppSelector((state) => state.user.userTier);
+  const membershipExpiresAt = useAppSelector(
+    (state) => state.user.membershipExpiresAt
+  );
+
+  // Use quota hook
+  const quota = useQuota("meme");
   const isPaymentModalOpen = useAppSelector(
     (state) => state.app.isPaymentModalOpen
   );
@@ -76,31 +89,333 @@ export default function MemeEditorPage() {
   );
   const initializedRef = useRef(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const previewAreaRef = useRef<HTMLDivElement>(null);
+  const [isProcessingBackground, setIsProcessingBackground] = useState(false);
+  const processedImageRef = useRef<{ [key: string]: string }>({});
+
+  // Use FFmpeg hook
+  const { initFFmpeg } = useFFmpeg();
+  // 管理情绪套餐下拉菜单的显示状态：{ groupIndex: boolean } 或 'single' 表示单分组模式
+  const [moodPackMenuOpen, setMoodPackMenuOpen] = useState<
+    number | "single" | null
+  >(null);
+  const moodPackMenuRefs = useRef<Map<number | "single", HTMLDivElement>>(
+    new Map()
+  );
+
+  // 点击外部区域关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moodPackMenuOpen === null) return;
+
+      const target = event.target as Node;
+      const menuElement = moodPackMenuRefs.current.get(moodPackMenuOpen);
+
+      if (menuElement && !menuElement.contains(target)) {
+        setMoodPackMenuOpen(null);
+      }
+    };
+
+    if (moodPackMenuOpen !== null) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [moodPackMenuOpen]);
+
+  const activeDraft = memeDrafts[activeDraftIndex];
+
+  // Use text prompts hook
+  const { getTextPrompts, updateTextPrompts, textPromptsRef } = useTextPrompts(
+    activeDraft,
+    activeDraftIndex
+  );
+
+  // 获取当前草稿的分组结果（从 Redux 中读取，类似多场景页面）
+  const getGroupResults = useCallback(
+    (draft: typeof activeDraft) => {
+      if (!draft) return [];
+      const prompts = getTextPrompts(draft);
+      // 如果草稿中有 groupResults，直接使用；否则返回初始值（不在这里更新 Redux）
+      if (draft.groupResults && draft.groupResults.length === prompts.length) {
+        return draft.groupResults;
+      }
+      // 返回初始值，但不更新 Redux（避免在渲染时调用 dispatch）
+      return prompts.map(() => ({
+        generatedUrl: null,
+        status: "pending" as const,
+      }));
+    },
+    [getTextPrompts]
+  );
+
+  // 在 useEffect 中初始化分组结果（避免在渲染时调用 dispatch）
+  useEffect(() => {
+    if (!activeDraft) return;
+    const prompts = getTextPrompts(activeDraft);
+    if (prompts.length > 1) {
+      // 如果还没有 groupResults 或长度不匹配，初始化
+      if (
+        !activeDraft.groupResults ||
+        activeDraft.groupResults.length !== prompts.length
+      ) {
+        const initialResults = prompts.map(() => ({
+          generatedUrl: null,
+          status: "pending" as const,
+        }));
+        dispatch(
+          updateMemeDraft({
+            index: activeDraftIndex,
+            draft: { groupResults: initialResults },
+          })
+        );
+      }
+    }
+  }, [activeDraft?.id, activeDraftIndex, dispatch, getTextPrompts]);
+
+  // 当前选中的分组索引（用于预览）
+  const [activeGroupIndex, setActiveGroupIndex] = useState(0);
+
+  // 当切换草稿时，重置分组索引
+  useEffect(() => {
+    setActiveGroupIndex(0);
+  }, [activeDraftIndex]);
+
+  // 检查是否选择了情绪套餐（排除 custom）
+  const hasSelectedMoodPack =
+    selectedMoodPack.filter((id) => id !== "custom").length > 0;
+
+  // 当切换草稿时，确保分组数据已初始化
+  useEffect(() => {
+    if (activeDraft) {
+      getTextPrompts(activeDraft);
+    }
+  }, [activeDraft?.id, getTextPrompts]);
+
+  // Removed initFFmpeg - now using useFFmpeg hook
 
   // 页面初始化
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
     setIsInitializing(false);
+
+    // FFmpeg 会在需要时自动初始化（在 generatePreview 中），不需要在这里预加载
   }, []);
 
-  const activeDraft = memeDrafts[activeDraftIndex];
-  const pendingCount = memeDrafts.filter(
-    (d) => d.status === "pending" || d.status === "error"
-  ).length;
-  // 检查是否所有表情包都已生成完成
-  const allCompleted =
-    memeDrafts.length > 0 &&
-    memeDrafts.every((d) => d.status === "done" && d.generatedUrl);
+  // 同步用户额度（只在 Redux 中没有用户信息时才从后端获取）
+  // 注意：SSR 已经在 layout.tsx 中初始化了用户信息，所以这里不需要每次都调用
+  const hasSyncedRef = useRef(false);
+  useEffect(() => {
+    const syncUserQuota = async () => {
+      // 如果已经同步过，或者 Redux 中已经有用户信息，就不需要再次同步
+      if (
+        hasSyncedRef.current ||
+        (userStatus === "LOGGED_IN" && userId && memeUsage)
+      ) {
+        return;
+      }
+
+      if (userStatus === "LOGGED_IN" && userId) {
+        hasSyncedRef.current = true;
+        try {
+          const userInfo = await getUserInfo(userId);
+          // 更新 Redux store 中的额度
+          if (userInfo.memeUsage) {
+            dispatch(setMemeUsage(userInfo.memeUsage));
+          }
+          if (userInfo.userTier) {
+            dispatch(setUserTier(userInfo.userTier));
+          }
+          if (userInfo.membershipExpiresAt !== undefined) {
+            dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+          }
+        } catch (error) {
+          console.error("Failed to sync user quota:", error);
+          hasSyncedRef.current = false; // 失败时允许重试
+        }
+      }
+    };
+
+    syncUserQuota();
+  }, [userStatus, userId, dispatch, memeUsage]);
+
+  // Use file upload hook
+  const { fileInputRef, handleFileChange, triggerFileInput } =
+    useMemeFileUpload();
+
+  // Use preview hook
+  const { previewGif, isGeneratingPreview, generatePreview, setPreviewGif } =
+    useMemePreview(processedImageRef);
+
+  // Auto generate preview when relevant properties change
+  // 使用 ref 存储最新的 draft 和函数，避免依赖变化导致循环触发
+  const previewDraftRef = useRef(activeDraft);
+  const generatePreviewRef = useRef(generatePreview);
+  const setPreviewGifRef = useRef(setPreviewGif);
+
+  // 更新 ref
+  useEffect(() => {
+    previewDraftRef.current = activeDraft;
+    generatePreviewRef.current = generatePreview;
+    setPreviewGifRef.current = setPreviewGif;
+  }, [activeDraft, generatePreview, setPreviewGif]);
+
+  useEffect(() => {
+    const draft = previewDraftRef.current;
+    if (
+      (!draft?.generatedUrl && !draft?.sourceUrl) ||
+      draft.animation === AnimationType.NONE
+    ) {
+      setPreviewGifRef.current(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      // 构造用于预览的 draft 对象
+      // 如果是多分组模式，需要使用当前选中的分组数据
+      const prompts = getTextPrompts(draft);
+      let previewDraft = { ...draft };
+
+      if (prompts.length > 1) {
+        const groupResults = getGroupResults(draft);
+        const groupResult = groupResults[activeGroupIndex];
+        const prompt = prompts[activeGroupIndex];
+
+        if (groupResult) {
+          previewDraft.generatedUrl =
+            groupResult.generatedUrl || draft.sourceUrl;
+          // 注意：如果 status 是 error，可能需要处理，但这里我们只关心是否有 url 用于预览
+        }
+
+        if (prompt) {
+          previewDraft.text = prompt.text;
+          previewDraft.textPosition = prompt.textPosition;
+        }
+      }
+
+      generatePreviewRef.current(previewDraft);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [
+    activeDraft?.generatedUrl,
+    activeDraft?.sourceUrl,
+    activeDraft?.animation,
+    activeDraft?.backgroundType,
+    activeDraft?.backgroundColor,
+    activeGroupIndex, // 添加 activeGroupIndex 依赖
+  ]);
+
+  // 移除自动处理逻辑：擦除背景只在生成时根据状态决定是否调用接口
+  const pendingCount = memeDrafts.reduce((count, draft) => {
+    const prompts = getTextPrompts(draft);
+    if (prompts.length > 1 && draft.groupResults) {
+      // 多分组：计算 groupResults 中 pending 的数量
+      const pendingGroups = draft.groupResults.filter(
+        (r) => r.status === "pending"
+      ).length;
+      // 如果 prompts 数量多于 groupResults，说明有新增的分组也是 pending
+      const extraPrompts = Math.max(
+        0,
+        prompts.length - draft.groupResults.length
+      );
+      return count + pendingGroups + extraPrompts;
+    } else {
+      // 单分组
+      return (
+        count + (draft.status === "pending" || draft.status === "error" ? 1 : 0)
+      );
+    }
+  }, 0);
+
+  // 检查是否有任何表情包正在生成中
+  const isGenerating = memeDrafts.some((d) => {
+    const prompts = getTextPrompts(d);
+    if (prompts.length > 1 && d.groupResults) {
+      return d.groupResults.some((r) => r.status === "generating");
+    }
+    return d.status === "generating";
+  });
+
+  // 检查是否所有表情包都已生成完成（无论成功还是失败，只要不是 pending 或 generating）
+  const allCompleted = useMemo(() => {
+    if (memeDrafts.length === 0) return false;
+    // 只要没有正在生成且没有等待生成的，就算完成
+    return !isGenerating && pendingCount === 0;
+  }, [memeDrafts, isGenerating, pendingCount]);
+
+  // 检查是否有错误状态
+  const hasError = useMemo(() => {
+    return memeDrafts.some((draft) => {
+      const prompts = getTextPrompts(draft);
+      if (prompts.length > 1 && draft.groupResults) {
+        return draft.groupResults.some((r) => r.status === "error");
+      }
+      return draft.status === "error";
+    });
+  }, [memeDrafts, getTextPrompts]);
+
+  // 检查是否所有都失败了
+  const allFailed = useMemo(() => {
+    if (memeDrafts.length === 0) return false;
+    return memeDrafts.every((draft) => {
+      const prompts = getTextPrompts(draft);
+      if (prompts.length > 1 && draft.groupResults) {
+        // 多分组：所有分组都失败才算全部失败
+        return (
+          draft.groupResults.length > 0 &&
+          draft.groupResults.every((r) => r.status === "error")
+        );
+      }
+      return draft.status === "error";
+    });
+  }, [memeDrafts, getTextPrompts]);
 
   const GUEST_DAILY_LIMIT = 1; // 游客1次
   const FREE_DAILY_LIMIT = 5; // 普通用户5次
-  const PREMIUM_DAILY_LIMIT = 50; // 会员50次
+
+  // 检查是否为会员（包括所有付费会员等级）
+  const isPremium = useMemo(() => {
+    return [UserTier.BASIC, UserTier.STANDARD, UserTier.PREMIUM].includes(
+      userTier
+    );
+  }, [userTier]);
+
+  // 检查会员是否过期（使用 useMemo 避免 SSR 问题）
+  const isMembershipValid = useMemo(() => {
+    if (!isPremium || !membershipExpiresAt) {
+      return false;
+    }
+    // 在 SSR 时，Date.now() 可能不可用，使用安全的检查
+    if (typeof window === "undefined") {
+      // SSR 时，假设会员有效（会在客户端重新计算）
+      return true;
+    }
+    return membershipExpiresAt > Date.now();
+  }, [isPremium, membershipExpiresAt]);
+
+  // 获取会员计划信息（使用 useMemo 缓存）
+  const membershipPlan = useMemo(() => {
+    if (isMembershipValid && userTier !== UserTier.FREE) {
+      return getMembershipPlan(userTier);
+    }
+    return null;
+  }, [isMembershipValid, userTier]);
 
   const getLimit = () => {
-    if (userTier === "PREMIUM") return PREMIUM_DAILY_LIMIT;
-    if (userStatus === "LOGGED_IN") return FREE_DAILY_LIMIT;
-    return GUEST_DAILY_LIMIT; // 游客
+    // 如果是有效会员，使用会员计划的月度额度
+    if (isMembershipValid && membershipPlan) {
+      return membershipPlan.memeQuota;
+    }
+    // 如果是已登录用户，使用免费额度
+    if (userStatus === "LOGGED_IN") {
+      return FREE_DAILY_LIMIT;
+    }
+    // 游客
+    return GUEST_DAILY_LIMIT;
   };
   const isQuotaReached = (amount = 1) => {
     const today = getTodayDateString();
@@ -115,379 +430,279 @@ export default function MemeEditorPage() {
     return Math.max(0, getLimit() - memeUsage.count);
   };
 
-  // Animation Preview Class
-  let animClass = "";
-  if (activeDraft?.animation === AnimationType.SHAKE)
-    animClass = "animate-shake";
-  if (activeDraft?.animation === AnimationType.PULSE)
-    animClass = "animate-pulse-fast";
-  if (activeDraft?.animation === AnimationType.ZOOM) animClass = "animate-zoom";
-  if (activeDraft?.animation === AnimationType.SPIN)
-    animClass = "animate-spin-slow";
+  // Removed handleFileChange and triggerFileInput - now using useMemeFileUpload hook
 
-  const applyMoodPack = (packId: string) => {
-    dispatch(setSelectedMoodPack(packId));
-    if (packId === "custom") return;
+  // 处理擦除背景开关变化
+  const handleBackgroundRemovalToggle = async (checked: boolean) => {
+    if (!activeDraft) return;
+
+    // 只更新状态，不调用接口
+    // 接口调用会在生成时根据这个状态来决定
+    dispatch(
+      updateMemeDraft({
+        index: activeDraftIndex,
+        draft: { removeBackground: checked },
+      })
+    );
+
+    // 如果有动效且已生成图片，切换开关后自动重新生成预览 GIF
+    if (
+      activeDraft.animation !== AnimationType.NONE &&
+      activeDraft.generatedUrl
+    ) {
+      console.log("有动效，重新生成预览 GIF");
+      try {
+        await generatePreview(activeDraft);
+      } catch (previewError) {
+        console.error("重新生成预览失败:", previewError);
+        // 预览生成失败不影响主流程
+      }
+    }
+  };
+
+  // 添加情绪套餐到指定分组
+  const applyMoodPackToGroup = (
+    packId: string,
+    groupIndex: number | "single"
+  ) => {
+    if (!activeDraft) return;
 
     const pack = MOOD_PACKS.find((p) => p.id === packId);
-    if (!pack) return;
+    if (!pack || pack.id === "custom" || pack.items.length === 0) return;
 
-    // 批量更新所有草稿
-    memeDrafts.forEach((draft, idx) => {
-      const moodItem = pack.items[idx % pack.items.length];
+    // 随机选择一个item（或者使用第一个）
+    const moodItem = pack.items[Math.floor(Math.random() * pack.items.length)];
+
+    if (groupIndex === "single") {
+      // 单分组模式：直接更新 text 和 moodPrompt
       dispatch(
         updateMemeDraft({
-          index: idx,
+          index: activeDraftIndex,
           draft: {
             text: moodItem.text,
             moodPrompt: moodItem.prompt,
-            status: "pending" as const,
           },
         })
       );
-    });
+    } else {
+      // 多分组模式：更新指定分组
+      const prompts = getTextPrompts(activeDraft);
+      if (prompts[groupIndex]) {
+        prompts[groupIndex].text = moodItem.text;
+        prompts[groupIndex].moodPrompt = moodItem.prompt;
+        updateTextPrompts(prompts, activeDraft.id);
+      }
+    }
+
+    // 关闭下拉菜单
+    setMoodPackMenuOpen(null);
   };
 
-  const handleGenerateMemes = async () => {
-    if (pendingCount === 0) return;
-
-    // 先检查次数
-    if (isQuotaReached(pendingCount)) {
-      dispatch(setIsQuotaModalOpen(true));
+  const applyMoodPack = (packId: string) => {
+    // 如果选择 custom，切换 custom 的选中状态（与其他选项互斥）
+    if (packId === "custom") {
+      const isCustomSelected = selectedMoodPack.includes("custom");
+      if (isCustomSelected) {
+        // 如果已经选中，取消选中
+        dispatch(setSelectedMoodPack([]));
+        // 清空分组
+        memeDrafts.forEach((draft, idx) => {
+          textPromptsRef.current[draft.id] = [];
+          dispatch(
+            updateMemeDraft({
+              index: idx,
+              draft: {
+                text: "",
+                moodPrompt: "",
+                status: "pending" as const,
+              },
+            })
+          );
+        });
+      } else {
+        // 如果未选中，选中 custom 并清空其他选择（互斥）
+        dispatch(setSelectedMoodPack(["custom"]));
+        // 清空分组
+        memeDrafts.forEach((draft, idx) => {
+          textPromptsRef.current[draft.id] = [];
+          dispatch(
+            updateMemeDraft({
+              index: idx,
+              draft: {
+                text: "",
+                moodPrompt: "",
+                status: "pending" as const,
+              },
+            })
+          );
+        });
+      }
       return;
     }
 
-    // Update UI to generating
-    memeDrafts.forEach((draft, idx) => {
-      if (draft.status === "pending" || draft.status === "error") {
-        dispatch(
-          updateMemeDraft({ index: idx, draft: { status: "generating" } })
-        );
-      }
-    });
+    // 选择其他选项时，确保与 custom 互斥
+    // 如果 custom 已选中，先移除它
+    const currentSelectedPacks = selectedMoodPack.filter(
+      (id) => id !== "custom"
+    );
 
-    // Process one by one
-    for (let i = 0; i < memeDrafts.length; i++) {
-      const draft = memeDrafts[i];
-      if (draft.status !== "pending" && draft.status !== "error") continue;
+    // 计算新的选择状态（在 dispatch 之前）
+    const isCurrentlySelected = currentSelectedPacks.includes(packId);
 
-      try {
-        dispatch(
-          updateMemeDraft({
-            index: i,
-            draft: { status: "generating" },
-          })
-        );
-
-        // 先用原图生成表情包
-        console.log("生成接口使用的图片参数（原图）:", {
-          type: typeof draft.sourceUrl,
-          length: draft.sourceUrl?.length,
-          preview: draft.sourceUrl?.substring(0, 100),
-          isBase64: draft.sourceUrl?.startsWith("data:image"),
-        });
-
-        const generatedImage = await generateSticker(
-          draft.sourceUrl,
-          draft.moodPrompt,
-          {
-            backgroundType: "transparent",
-            removeBackground: false,
-          }
-        );
-
-        console.log("生成接口返回的图片:", {
-          type: typeof generatedImage,
-          length: generatedImage?.length,
-          preview: generatedImage?.substring(0, 100),
-          isBase64: generatedImage?.startsWith("data:image"),
-        });
-
-        // 如果选择抠图，对生成后的图片进行抠图处理
-        let finalImage = generatedImage;
-        if (draft.removeBackground ?? true) {
-          try {
-            const processedImage = await removeBackground(
-              generatedImage,
-              draft.refineForeground ?? false
-            );
-            console.log("抠图接口返回的数据:", {
-              type: typeof processedImage,
-              length: processedImage?.length,
-              preview: processedImage?.substring(0, 100),
-              isBase64: processedImage?.startsWith("data:image"),
-            });
-
-            if (!processedImage) {
-              throw new Error("抠图接口返回的图片为空");
-            }
-
-            finalImage = processedImage;
-            console.log("使用抠图接口处理后的图片作为最终结果");
-          } catch (bgError) {
-            console.error("Background removal failed:", bgError);
-            if (bgError instanceof BackgroundRemovalError) {
-              throw new Error(`背景移除失败: ${bgError.message}`);
-            }
-            throw bgError;
-          }
-        }
-
-        // 上传图片到云存储
-        let cloudImageUrl = finalImage;
-        if (finalImage.startsWith("data:image")) {
-          // 提取 mimeType
-          let detectedMimeType = "image/png";
-          if (finalImage.startsWith("data:image/png")) {
-            detectedMimeType = "image/png";
-          } else if (
-            finalImage.startsWith("data:image/jpeg") ||
-            finalImage.startsWith("data:image/jpg")
-          ) {
-            detectedMimeType = "image/jpeg";
-          } else if (finalImage.startsWith("data:image/webp")) {
-            detectedMimeType = "image/webp";
-          }
-
-          const uploadResult = await uploadImageToCloud(
-            finalImage,
-            undefined,
-            detectedMimeType
-          );
-          if (uploadResult && uploadResult.url) {
-            cloudImageUrl = uploadResult.url;
-          } else {
-            console.warn("Failed to upload image to cloud, using base64 URL");
-          }
-        }
-
-        dispatch(
-          updateMemeDraft({
-            index: i,
-            draft: { generatedUrl: cloudImageUrl, status: "done" },
-          })
-        );
-        // 表情包生成成功，增加使用次数
-        dispatch(updateMemeUsage(1));
-
-        // 如果用户已登录，同步到后端
-        if (userStatus === "LOGGED_IN" && userId) {
-          try {
-            const updatedUsage = await updateMemeUsageAPI(userId, 1);
-            dispatch(setMemeUsage(updatedUsage));
-          } catch (error) {
-            console.error("Failed to sync meme usage to backend:", error);
-          }
-        }
-
-        // 保存历史记录到数据库（使用云存储链接）
-        await saveHistory(
-          "meme",
-          cloudImageUrl,
-          draft.moodPrompt || draft.text,
-          undefined
-        );
-      } catch (e) {
-        dispatch(updateMemeDraft({ index: i, draft: { status: "error" } }));
-      }
+    // 如果当前未选中，且已经选择了5个套餐，则不允许再选择
+    if (!isCurrentlySelected && currentSelectedPacks.length >= 5) {
+      alert("最多只能选择5个情绪套餐");
+      return;
     }
-  };
 
-  const createGif = async (
-    draft: typeof activeDraft,
-    width = 240,
-    height = 240,
-    withBackground = true
-  ): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      if (draft.animation === AnimationType.NONE || !draft.generatedUrl) {
-        resolve(draft.generatedUrl || "");
-        return;
-      }
+    // 构建新的选择列表（确保不包含 custom，实现互斥）
+    const newSelected = isCurrentlySelected
+      ? currentSelectedPacks.filter((id) => id !== packId)
+      : [...currentSelectedPacks, packId];
 
-      const frames: string[] = [];
-      const numFrames = 10;
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+    // 切换选择状态（确保不包含 custom，实现互斥）
+    dispatch(setSelectedMoodPack(newSelected));
 
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = getProxiedImageUrl(draft.generatedUrl);
+    // 过滤掉 custom，只处理实际的套餐
+    const selectedPacks = newSelected.filter((id) => id !== "custom");
 
-      img.onload = () => {
-        ctx.font = "bold 24px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        const drawFrame = (frameIndex: number) => {
-          ctx.clearRect(0, 0, width, height);
-          // 根据选项设置背景色
-          if (withBackground) {
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, width, height);
-          }
-          ctx.save();
-
-          let scale = 1;
-          let tx = 0;
-          let rotate = 0;
-          const t = frameIndex / numFrames;
-
-          if (draft.animation === AnimationType.SHAKE) {
-            const offset = 4;
-            if (frameIndex % 2 === 0) {
-              tx = offset;
-              rotate = 2;
-            } else {
-              tx = -offset;
-              rotate = -2;
-            }
-          } else if (draft.animation === AnimationType.PULSE) {
-            scale = 1 + Math.sin(t * Math.PI * 2) * 0.1;
-          } else if (draft.animation === AnimationType.ZOOM) {
-            scale = 1 + t * 0.2;
-          } else if (draft.animation === AnimationType.SPIN) {
-            rotate = t * 360;
-          }
-
-          ctx.translate(width / 2, height / 2);
-          ctx.rotate((rotate * Math.PI) / 180);
-          ctx.scale(scale, scale);
-          ctx.translate(-width / 2, -height / 2);
-
-          const scaleFactor = Math.min(width / img.width, 200 / img.height);
-          const w = img.width * scaleFactor;
-          const h = img.height * scaleFactor;
-          const x = (width - w) / 2;
-          const y = (200 - h) / 2;
-
-          ctx.drawImage(img, x, y, w, h);
-
-          ctx.fillStyle = "white";
-          ctx.strokeStyle = "black";
-          ctx.lineWidth = 4;
-          ctx.strokeText(draft.text, 120, 220);
-          ctx.fillText(draft.text, 120, 220);
-
-          frames.push(canvas.toDataURL("image/png"));
-        };
-
-        for (let i = 0; i < numFrames; i++) {
-          drawFrame(i);
-        }
-
-        if (typeof window.gifshot !== "undefined") {
-          window.gifshot.createGIF(
-            {
-              images: frames,
-              gifWidth: width,
-              gifHeight: height,
-              interval: 0.1,
-              numFrames: numFrames,
+    if (selectedPacks.length === 0) {
+      // 如果没有选择任何套餐，清空分组
+      memeDrafts.forEach((draft, idx) => {
+        textPromptsRef.current[draft.id] = [];
+        dispatch(
+          updateMemeDraft({
+            index: idx,
+            draft: {
+              text: "",
+              moodPrompt: "",
+              status: "pending" as const,
             },
-            (obj: any) => {
-              if (!obj.error) {
-                resolve(obj.image);
-              } else {
-                reject(obj.errorMsg);
-              }
-            }
+          })
+        );
+      });
+      return;
+    }
+
+    // 批量更新所有草稿
+    memeDrafts.forEach((draft, idx) => {
+      // 获取当前已有的分组（包括用户手动添加的自定义分组）
+      const existingPrompts = getTextPrompts(draft);
+      // 计算操作前的情绪套餐数量（用于识别哪些是自定义分组）
+      // 假设前 N 个分组是来自情绪套餐的，N 个之后的是用户手动添加的自定义分组
+      // 使用操作前的 currentSelectedPacks.length 来识别自定义分组
+      const previousMoodPackCount = currentSelectedPacks.length;
+      // 保留在操作前的情绪套餐数量之后的所有分组作为自定义分组
+      const customPrompts = existingPrompts.slice(previousMoodPackCount);
+
+      if (selectedPacks.length === 1) {
+        // 只选择1个套餐时，不创建分组，直接更新 text 和 moodPrompt
+        const pack = MOOD_PACKS.find((p) => p.id === selectedPacks[0]);
+        if (pack && pack.items.length > 0) {
+          const moodItem = pack.items[idx % pack.items.length];
+          // 清空分组（但保留自定义分组）
+          textPromptsRef.current[draft.id] = customPrompts;
+          // 直接更新 text 和 moodPrompt
+          dispatch(
+            updateMemeDraft({
+              index: idx,
+              draft: {
+                text: moodItem.text,
+                moodPrompt: moodItem.prompt,
+                status: "pending" as const,
+              },
+            })
           );
-        } else {
-          reject("gifshot library not loaded");
         }
-      };
-    });
-  };
+      } else {
+        // 选择2个或以上套餐时，创建分组（最多5个）
+        const prompts: Array<{
+          text: string;
+          moodPrompt: string;
+          textPosition?: "top" | "bottom";
+        }> = [];
+        const maxGroups = Math.min(selectedPacks.length, 5);
 
-  const exportWeChatPackage = async () => {
-    dispatch(setIsExporting(true));
-    try {
-      const zip = new JSZip();
-      const completedDrafts = memeDrafts.filter(
-        (d) => d.status === "done" && d.generatedUrl
-      );
+        for (let i = 0; i < maxGroups; i++) {
+          const selectedPackId = selectedPacks[i];
+          const pack = MOOD_PACKS.find((p) => p.id === selectedPackId);
+          if (!pack || pack.items.length === 0) continue;
 
-      if (completedDrafts.length === 0) {
-        alert("没有可导出的表情包");
-        dispatch(setIsExporting(false));
-        return;
-      }
-
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      canvas.width = 240;
-      canvas.height = 240;
-
-      for (let i = 0; i < completedDrafts.length; i++) {
-        const draft = completedDrafts[i];
-        if (draft.animation !== AnimationType.NONE) {
-          try {
-            const gifBase64 = await createGif(
-              draft,
-              240,
-              240,
-              false // 始终不使用背景色
-            );
-            const base64Data = gifBase64.split(",")[1];
-            zip.file(`sticker_${i + 1}.gif`, base64Data, { base64: true });
-          } catch (e) {
-            console.error("GIF creation failed", e);
-          }
-        } else {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.src = getProxiedImageUrl(draft.generatedUrl!);
-
-          await new Promise((resolve) => {
-            img.onload = () => {
-              ctx.clearRect(0, 0, 240, 240);
-              // 不使用背景色，保持透明背景
-              const scale = Math.min(240 / img.width, 200 / img.height);
-              const w = img.width * scale;
-              const h = img.height * scale;
-              const x = (240 - w) / 2;
-              const y = (200 - h) / 2;
-              ctx.drawImage(img, x, y, w, h);
-              ctx.font = "bold 24px sans-serif";
-              ctx.textAlign = "center";
-              ctx.fillStyle = "white";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 4;
-              ctx.strokeText(draft.text, 120, 220);
-              ctx.fillText(draft.text, 120, 220);
-              const dataUrl = canvas.toDataURL("image/png");
-              const base64Data = dataUrl.split(",")[1];
-              zip.file(`sticker_${i + 1}.png`, base64Data, { base64: true });
-              resolve(null);
-            };
+          const moodItem = pack.items[idx % pack.items.length];
+          prompts.push({
+            text: moodItem.text,
+            moodPrompt: moodItem.prompt,
+            textPosition: "bottom", // 默认下方
           });
         }
-      }
 
-      zip.file(
-        "README.txt",
-        "这些表情包由 IP 创想坊 AI 生成。\nGIF 建议直接发送给文件助手再添加表情。"
-      );
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `meme-pack-${Date.now()}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("Export failed", e);
-      alert("导出失败，请重试");
-    } finally {
-      dispatch(setIsExporting(false));
-    }
+        // 保留用户手动添加的自定义分组（在情绪套餐分组之后）
+        const allPrompts = [...prompts, ...customPrompts];
+
+        // 更新分组缓存
+        textPromptsRef.current[draft.id] = allPrompts;
+
+        // 更新Redux store（使用第一个分组的数据作为默认值）
+        const firstPrompt = prompts[0] || { text: "", moodPrompt: "" };
+
+        // 预初始化 groupResults 和 prompts
+        const initialGroupResults = allPrompts.map(() => ({
+          generatedUrl: null,
+          status: "pending" as const,
+        }));
+
+        dispatch(
+          updateMemeDraft({
+            index: idx,
+            draft: {
+              text: firstPrompt.text,
+              moodPrompt: firstPrompt.moodPrompt,
+              textPosition: firstPrompt.textPosition,
+              status: "pending" as const,
+              groupResults: initialGroupResults,
+              prompts: allPrompts,
+            },
+          })
+        );
+      }
+    });
   };
+
+  // Use generation hook
+  const { generateMemes: handleGenerateMemes, retryGroup: handleRetryGroup } =
+    useMemeGeneration({
+      memeDrafts,
+      getTextPrompts,
+      getGroupResults,
+      processedImageRef,
+      isQuotaReached: (amount = 1) => {
+        const today = getTodayDateString();
+        const usageDate = normalizeDateString(memeUsage.date);
+        if (usageDate !== today) return false;
+        return memeUsage.count + amount > getLimit();
+      },
+      setIsQuotaModalOpen: (open: boolean) =>
+        dispatch(setIsQuotaModalOpen(open)),
+      setIsProcessingBackground,
+      textPromptsRef, // 传递 textPromptsRef 以便直接访问数据
+    });
+
+  // Use export hook
+  const { exportWeChatPackage } = useMemeExport({
+    memeDrafts,
+    getTextPrompts,
+    processedImageRef,
+  });
+
+  // Removed handleGenerateMemesLegacy - now using useMemeGeneration hook
+
+  // Removed createGif - now using createGifWithFFmpeg from utils/gif-utils.ts
+  // This function is handled by useMemePreview hook
+
+  // Removed createFinalImageWithText - now using createFinalImageWithText from utils/image-utils.ts
+  // This function is handled by useMemeGeneration and useMemeExport hooks
+
+  // Removed exportWeChatPackage - now using useMemeExport hook
 
   // 如果还在初始化，显示加载状态
   if (isInitializing) {
@@ -516,21 +731,41 @@ export default function MemeEditorPage() {
         <div className="flex-1 p-6 md:p-12 flex items-center justify-center max-w-6xl mx-auto w-full">
           <div className="w-full max-w-md text-center space-y-6">
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-              <div className="w-full h-64 flex flex-col items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                <Smile size={64} className="text-gray-300 mb-4" />
+              <div
+                onClick={triggerFileInput}
+                className="w-full h-64 flex flex-col items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-violet-50 hover:border-violet-400 transition-all group"
+              >
+                <div className="w-16 h-16 bg-violet-100 text-violet-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform mb-4">
+                  <svg
+                    className="w-8 h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                </div>
                 <p className="text-lg font-semibold text-gray-700 mb-2">
                   还没有表情包草稿
                 </p>
-                <p className="text-sm text-gray-400 mb-6">
-                  请先上传图片开始制作表情包
+                <p className="text-sm text-gray-400 mb-4">
+                  点击上传图片开始制作表情包
                 </p>
-                <button
-                  onClick={() => router.push("/create")}
-                  className="px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium flex items-center gap-2"
-                >
-                  <Smile size={18} />
-                  上传图片
-                </button>
+                <p className="text-xs text-gray-400">
+                  支持 JPG, PNG (最大 5MB)
+                </p>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/png, image/jpeg, image/webp"
+                  onChange={handleFileChange}
+                />
               </div>
             </div>
           </div>
@@ -552,57 +787,281 @@ export default function MemeEditorPage() {
         <div className="w-8"></div>
       </header>
 
-      <div className="flex-1 p-6 md:p-12 space-y-6 overflow-y-auto max-w-6xl mx-auto w-full">
-        {/* 额度显示 */}
-        <div className="flex items-center justify-end mb-2">
-          <div
-            className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full border ${
-              isQuotaReached()
-                ? "bg-red-50 text-red-600 border-red-200"
-                : "bg-violet-50 text-violet-700 border-violet-200"
-            }`}
-          >
-            <Zap size={16} fill="currentColor" />
-            <span className="font-semibold">
-              表情包：{remainingQuota()} / {getLimit()}
-            </span>
-          </div>
+      <div className="flex-1 p-6 md:p-12 space-y-6 max-w-6xl mx-auto w-full">
+        {/* 额度显示和下载按钮 */}
+        <div className="flex items-center justify-between mb-2">
+          {/* 额度显示 */}
+          <QuotaDisplay
+            remaining={remainingQuota()}
+            limit={getLimit()}
+            isReached={isQuotaReached()}
+          />
+          {/* 下载按钮（在有至少1个完成的表情包时显示） */}
+          {(() => {
+            // 计算所有完成的表情包数量（包括单分组和多分组）
+            let completedCount = 0;
+            memeDrafts.forEach((d) => {
+              const prompts = getTextPrompts(d);
+              if (prompts.length > 1 && d.groupResults) {
+                // 多分组：统计 groupResults 中状态为 "done" 且有 generatedUrl 的数量
+                completedCount += d.groupResults.filter(
+                  (r) => r.status === "done" && r.generatedUrl
+                ).length;
+              } else {
+                // 单分组：检查主草稿状态
+                if (d.status === "done" && d.generatedUrl) {
+                  completedCount += 1;
+                }
+              }
+            });
+            return completedCount >= 1 ? (
+              <button
+                onClick={exportWeChatPackage}
+                disabled={isExporting}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  isExporting
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-violet-600 text-white hover:bg-violet-700"
+                }`}
+              >
+                {isExporting ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Download size={16} />
+                )}
+                {completedCount === 1
+                  ? "下载表情包"
+                  : `批量下载所有表情包 (${completedCount} 张)`}
+              </button>
+            ) : null;
+          })()}
         </div>
 
         <div className="md:grid md:grid-cols-2 md:gap-8 md:items-start">
           {/* Left Column - Preview Area */}
-          <div className="space-y-6">
+          <div
+            className="space-y-6 md:sticky md:top-20 md:self-start"
+            style={{
+              transition: "transform 0.2s ease-out, opacity 0.2s ease-out",
+            }}
+          >
+            {/* 原图展示区域 - 只在有生成结果时显示 */}
+            {(() => {
+              if (!activeDraft?.sourceUrl) return null;
+
+              // 检查是否有生成结果
+              const prompts = getTextPrompts(activeDraft);
+              let hasGeneratedResult = false;
+
+              if (prompts.length > 1) {
+                // 多分组：检查当前选中分组是否有生成结果
+                const groupResults = getGroupResults(activeDraft);
+                const groupResult = groupResults[activeGroupIndex];
+                hasGeneratedResult = !!groupResult?.generatedUrl;
+              } else {
+                // 单分组：检查主草稿是否有生成结果
+                hasGeneratedResult = !!(
+                  activeDraft.generatedUrl &&
+                  activeDraft.sourceUrl !== activeDraft.generatedUrl
+                );
+              }
+
+              // 只有在有生成结果时才显示原图
+              return hasGeneratedResult ? (
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ImageIcon size={16} className="text-gray-500" />
+                    <span className="text-sm font-medium text-gray-700">
+                      原图
+                    </span>
+                  </div>
+                  <img
+                    src={getProxiedImageUrl(activeDraft.sourceUrl)}
+                    alt="Original Image"
+                    className="w-full h-32 md:h-40 object-contain bg-gray-100 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => {
+                      window.open(
+                        getProxiedImageUrl(activeDraft.sourceUrl),
+                        "_blank"
+                      );
+                    }}
+                  />
+                </div>
+              ) : null;
+            })()}
+
             <div className="bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-gray-100 p-6 md:p-8 flex flex-col items-center justify-center relative md:rounded-2xl md:shadow-sm">
               <div className="w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 bg-white rounded-lg shadow-xl border-4 border-white relative flex items-center justify-center">
-                <div
-                  className={`w-full h-full relative overflow-hidden ${animClass}`}
-                  style={{
-                    backgroundColor: "transparent",
-                  }}
-                >
-                  {activeDraft.generatedUrl ? (
-                    <>
-                      <img
-                        src={getProxiedImageUrl(activeDraft.generatedUrl)}
-                        className="w-full h-full object-contain p-4"
+                <div className="w-full h-full relative overflow-hidden bg-white">
+                  {isGeneratingPreview ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 relative">
+                      <Loader2
+                        className="animate-spin text-violet-500"
+                        size={32}
                       />
-                      <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
-                        <span
-                          className="text-2xl font-bold text-white stroke-black drop-shadow-md"
-                          style={{
-                            textShadow:
-                              "2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000",
-                          }}
-                        >
-                          {activeDraft.text}
-                        </span>
-                      </div>
+                      <span className="text-sm text-gray-600">
+                        正在生成预览...
+                      </span>
+                    </div>
+                  ) : activeDraft?.generatedUrl || activeDraft?.sourceUrl ? (
+                    <>
+                      {previewGif &&
+                      (activeDraft.animation !== AnimationType.NONE ||
+                        memeDrafts[activeDraftIndex]?.animation !==
+                          AnimationType.NONE) ? (
+                        <div className="w-full h-full bg-white flex items-center justify-center">
+                          <img
+                            key={`preview-${
+                              activeDraft.animation
+                            }-${Date.now()}`}
+                            src={previewGif}
+                            alt="Preview"
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                              console.error("预览 GIF 加载失败:", e);
+                              setPreviewGif(null);
+                            }}
+                            onLoad={() => {
+                              console.log("预览 GIF 加载成功");
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          {(() => {
+                            const prompts = getTextPrompts(activeDraft);
+                            let imageUrl: string | null = null;
+
+                            if (prompts.length > 1) {
+                              // 多分组：使用选中分组的生成结果
+                              const groupResults = getGroupResults(activeDraft);
+                              const groupResult =
+                                groupResults[activeGroupIndex];
+                              if (groupResult?.generatedUrl) {
+                                imageUrl = groupResult.generatedUrl;
+                              } else if (activeDraft.sourceUrl) {
+                                // 如果没有生成结果，显示原图
+                                imageUrl = activeDraft.sourceUrl;
+                              }
+                            } else {
+                              // 单分组：使用原有逻辑
+                              if (
+                                activeDraft.status === "done" &&
+                                activeDraft.generatedUrl
+                              ) {
+                                imageUrl = activeDraft.generatedUrl;
+                              } else if (
+                                activeDraft.removeBackground &&
+                                processedImageRef.current[activeDraft.id]
+                              ) {
+                                imageUrl =
+                                  processedImageRef.current[activeDraft.id];
+                              } else if (activeDraft.generatedUrl) {
+                                imageUrl = activeDraft.generatedUrl;
+                              } else if (activeDraft.sourceUrl) {
+                                imageUrl = activeDraft.sourceUrl;
+                              }
+                            }
+
+                            if (!imageUrl) {
+                              return (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <div className="text-center p-4">
+                                    <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-lg flex items-center justify-center">
+                                      <Package className="w-8 h-8 text-gray-400" />
+                                    </div>
+                                    <span className="text-sm text-gray-500">
+                                      暂无图片
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // 检查图片是否已经包含文字（generatedUrl 已经通过 createFinalImageWithText 添加了文字）
+                            const hasGeneratedResult = (() => {
+                              if (prompts.length > 1) {
+                                const groupResults =
+                                  getGroupResults(activeDraft);
+                                const groupResult =
+                                  groupResults[activeGroupIndex];
+                                return (
+                                  groupResult?.generatedUrl &&
+                                  groupResult.status === "done"
+                                );
+                              } else {
+                                return (
+                                  activeDraft.status === "done" &&
+                                  activeDraft.generatedUrl
+                                );
+                              }
+                            })();
+
+                            return (
+                              <>
+                                <img
+                                  src={getProxiedImageUrl(imageUrl)}
+                                  className="w-full h-full object-contain p-4"
+                                  alt="Preview"
+                                  onError={(e) => {
+                                    console.error("预览图加载失败:", e);
+                                  }}
+                                />
+                                {/* 只有在图片还没有生成完成时才显示文字覆盖层 */}
+                                {!hasGeneratedResult && (
+                                  <div
+                                    className={`absolute left-0 right-0 text-center pointer-events-none ${(() => {
+                                      const prompts =
+                                        getTextPrompts(activeDraft);
+                                      // 多分组模式：使用当前选中分组的 textPosition
+                                      // 单分组模式：使用草稿的 textPosition
+                                      const textPosition =
+                                        prompts.length > 1
+                                          ? prompts[activeGroupIndex]
+                                              ?.textPosition ||
+                                            activeDraft.textPosition ||
+                                            "bottom"
+                                          : activeDraft.textPosition ||
+                                            "bottom";
+                                      return textPosition === "top"
+                                        ? "top-4"
+                                        : "bottom-4";
+                                    })()}`}
+                                  >
+                                    <span
+                                      className="text-2xl font-bold text-white stroke-black drop-shadow-md"
+                                      style={{
+                                        textShadow:
+                                          "2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000",
+                                      }}
+                                    >
+                                      {(() => {
+                                        const prompts =
+                                          getTextPrompts(activeDraft);
+                                        if (prompts.length > 1) {
+                                          return (
+                                            prompts[activeGroupIndex]?.text ||
+                                            activeDraft.text ||
+                                            ""
+                                          );
+                                        }
+                                        return activeDraft.text || "";
+                                      })()}
+                                    </span>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </>
+                      )}
                     </>
-                  ) : (
+                  ) : activeDraft?.sourceUrl ? (
                     <div className="text-center p-4 opacity-50">
                       <img
                         src={getProxiedImageUrl(activeDraft.sourceUrl)}
                         className="w-full h-full object-contain opacity-30 blur-sm"
+                        alt="等待生成"
                       />
                       <div className="absolute inset-0 flex items-center justify-center">
                         <span className="bg-gray-800 text-white px-3 py-1 rounded-full text-xs">
@@ -610,21 +1069,86 @@ export default function MemeEditorPage() {
                         </span>
                       </div>
                     </div>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center p-4">
+                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-lg flex items-center justify-center">
+                          <Package className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <span className="text-sm text-gray-500">暂无图片</span>
+                      </div>
+                    </div>
                   )}
                 </div>
-                {activeDraft.status === "generating" && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10 rounded-md">
-                    <Loader message="" />
+                {/* 擦除背景状态显示 - 只在没有动态图时显示 */}
+                {isProcessingBackground && !previewGif && (
+                  <div className="absolute inset-0 z-20 rounded-md overflow-hidden">
+                    {/* 模糊的原图作为背景 */}
+                    <img
+                      src={getProxiedImageUrl(
+                        (() => {
+                          const prompts = getTextPrompts(activeDraft);
+                          if (prompts.length > 1) {
+                            const groupResults = getGroupResults(activeDraft);
+                            const groupResult = groupResults[activeGroupIndex];
+                            if (groupResult?.generatedUrl) {
+                              return groupResult.generatedUrl;
+                            }
+                            return activeDraft.sourceUrl;
+                          } else {
+                            return (
+                              activeDraft.generatedUrl || activeDraft.sourceUrl
+                            );
+                          }
+                        })()
+                      )}
+                      className="w-full h-full object-contain p-4 blur-sm opacity-50"
+                    />
+                    {/* 擦除动画效果 */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="relative w-full h-full">
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-violet-400/70 to-transparent animate-wipe z-10"></div>
+                      </div>
+                    </div>
+                    {/* 提示文字 */}
+                    <div className="absolute bottom-4 left-0 right-0 text-center z-20">
+                      <span className="bg-violet-600 text-white px-4 py-2 rounded-full text-sm font-medium">
+                        正在移除背景...
+                      </span>
+                    </div>
                   </div>
                 )}
+                {/* 多分组时，检查当前选中分组是否正在生成中 */}
+                {(() => {
+                  const prompts = getTextPrompts(activeDraft);
+                  if (prompts.length > 1) {
+                    const groupResults = getGroupResults(activeDraft);
+                    const groupResult = groupResults[activeGroupIndex];
+                    if (groupResult?.status === "generating") {
+                      return (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10 rounded-md">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                        </div>
+                      );
+                    }
+                  } else if (activeDraft.status === "generating") {
+                    return (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10 rounded-md">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
+              {/* 多草稿缩略图（只在有多个草稿时显示） */}
               {memeDrafts.length > 1 && (
                 <div className="mt-6 flex gap-2 overflow-x-auto max-w-full p-2 bg-white/50 rounded-xl backdrop-blur-md md:flex-wrap md:justify-center">
                   {memeDrafts.map((draft, idx) => (
                     <div
                       key={draft.id}
                       onClick={() => dispatch(setActiveDraftIndex(idx))}
-                      className={`w-12 h-12 md:w-16 md:h-16 rounded-lg border-2 flex-shrink-0 overflow-hidden cursor-pointer relative transition-all hover:scale-105 ${
+                      className={`w-12 h-12 md:w-16 md:h-16 rounded-lg border-2 shrink-0 overflow-hidden cursor-pointer relative transition-all hover:scale-105 ${
                         idx === activeDraftIndex
                           ? "border-violet-600 ring-2 ring-violet-200"
                           : "border-gray-200"
@@ -639,225 +1163,133 @@ export default function MemeEditorPage() {
                       {draft.status === "done" && (
                         <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border border-white"></div>
                       )}
+                      {draft.status === "generating" && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
+                        </div>
+                      )}
+                      {draft.status === "error" && (
+                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-red-500 rounded-full border border-white"></div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
+              {/* 多分组缩略图（只要有多个分组就显示，方便查看状态和切换） */}
+              {(() => {
+                const prompts = getTextPrompts(activeDraft);
+                const groupResults = getGroupResults(activeDraft);
+
+                if (prompts.length > 1) {
+                  return (
+                    <div className="mt-6 flex gap-2 overflow-x-auto max-w-full p-2 bg-white/50 rounded-xl backdrop-blur-md md:flex-wrap md:justify-center">
+                      {prompts.map((_, groupIdx) => {
+                        const groupResult = groupResults[groupIdx] || {
+                          generatedUrl: null,
+                          status: "pending" as const,
+                        };
+
+                        return (
+                          <div
+                            key={groupIdx}
+                            onClick={() => setActiveGroupIndex(groupIdx)}
+                            className={`w-12 h-12 md:w-16 md:h-16 rounded-lg border-2 shrink-0 overflow-hidden cursor-pointer relative transition-all hover:scale-105 ${
+                              groupIdx === activeGroupIndex
+                                ? "border-violet-600 ring-2 ring-violet-200"
+                                : "border-gray-200"
+                            }`}
+                          >
+                            <img
+                              src={getProxiedImageUrl(
+                                groupResult.generatedUrl ||
+                                  activeDraft.sourceUrl
+                              )}
+                              className="w-full h-full object-cover"
+                            />
+                            {groupResult.status === "done" && (
+                              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border border-white"></div>
+                            )}
+                            {groupResult.status === "generating" && (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
+                              </div>
+                            )}
+                            {groupResult.status === "error" && (
+                              <div className="absolute bottom-0 right-0 w-3 h-3 bg-red-500 rounded-full border border-white"></div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
 
           {/* Right Column - Controls */}
           <div className="space-y-6">
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-800 ml-1 flex items-center gap-2">
-                <Smile size={16} className="text-violet-500" /> 情绪套餐
-              </label>
-              <div className="flex gap-2 overflow-x-auto md:flex-wrap md:overflow-x-visible pb-2 no-scrollbar">
-                {MOOD_PACKS.map((pack) => (
-                  <button
-                    key={pack.id}
-                    onClick={() => applyMoodPack(pack.id)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                      selectedMoodPack === pack.id
-                        ? "bg-amber-100 text-amber-700 border border-amber-200"
-                        : "bg-white border border-gray-200 text-gray-600 hover:border-amber-200 hover:bg-gray-50"
-                    }`}
-                  >
-                    {pack.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <AnimationSelector
+              activeDraft={activeDraft}
+              activeDraftIndex={activeDraftIndex}
+              isGeneratingPreview={isGeneratingPreview}
+              onAnimationChange={(animation) => {
+                const currentDraft = memeDrafts[activeDraftIndex];
+                if (!currentDraft) return;
 
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-800 ml-1 flex items-center gap-2">
-                <Play size={16} className="text-violet-500" /> 动态特效
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                {ANIMATION_OPTIONS.map((anim) => (
-                  <button
-                    key={anim.id}
-                    onClick={() => {
-                      dispatch(
-                        updateMemeDraft({
-                          index: activeDraftIndex,
-                          draft: { animation: anim.id },
-                        })
-                      );
-                    }}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 border transition-colors whitespace-nowrap ${
-                      activeDraft.animation === anim.id
-                        ? "bg-violet-50 border-violet-500 text-violet-700 shadow-sm ring-1 ring-violet-200"
-                        : "bg-white border-gray-200 text-gray-600 hover:border-violet-200 hover:bg-gray-50"
-                    }`}
-                  >
-                    {anim.icon}
-                    {anim.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+                // 如果正在生成预览，不允许切换
+                if (isGeneratingPreview) return;
 
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-800 ml-1 flex items-center gap-2">
-                <Layers size={16} className="text-violet-500" /> 表情文案
-              </label>
-              <input
-                type="text"
-                value={activeDraft.text}
-                onChange={(e) => {
-                  dispatch(
-                    updateMemeDraft({
-                      index: activeDraftIndex,
-                      draft: { text: e.target.value },
-                    })
-                  );
-                }}
-                className="w-full p-4 rounded-2xl border border-gray-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-gray-700 shadow-sm text-sm"
-              />
-            </div>
+                dispatch(
+                  updateMemeDraft({
+                    index: activeDraftIndex,
+                    draft: { animation },
+                  })
+                );
 
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-800 ml-1 flex items-center gap-2">
-                <Wand2 size={16} className="text-violet-500" /> 动作指令
-              </label>
-              <input
-                type="text"
-                value={activeDraft.moodPrompt}
-                placeholder="例如：大笑、挥手"
-                onChange={(e) => {
-                  dispatch(
-                    updateMemeDraft({
-                      index: activeDraftIndex,
-                      draft: {
-                        moodPrompt: e.target.value,
-                        status: "pending",
-                      },
-                    })
-                  );
-                }}
-                className="w-full p-4 rounded-2xl border border-gray-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-gray-700 shadow-sm text-sm"
-              />
-            </div>
+                // 清除预览 GIF，让 useEffect 自动处理预览生成
+                if (animation === AnimationType.NONE) {
+                  setPreviewGif(null);
+                }
+                // 其他情况由 useEffect 自动处理，避免重复调用
+              }}
+            />
 
-            {/* 抠图开关 */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                    <Layers size={16} className="text-violet-500" /> 抠图
-                  </label>
-                  <span className="text-xs text-gray-400">移除背景</span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={activeDraft.removeBackground ?? true}
-                    onChange={(e) => {
-                      dispatch(
-                        updateMemeDraft({
-                          index: activeDraftIndex,
-                          draft: { removeBackground: e.target.checked },
-                        })
-                      );
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
-                </label>
-              </div>
+            {/* 表情文案和动作指令分组 */}
+            <TextPromptGroups
+              activeDraft={activeDraft}
+              activeDraftIndex={activeDraftIndex}
+              getGroupResults={getGroupResults}
+              hasSelectedMoodPack={hasSelectedMoodPack}
+              onApplyMoodPack={applyMoodPackToGroup}
+              onRetryGroup={(groupIndex) =>
+                handleRetryGroup(activeDraftIndex, groupIndex)
+              }
+              getTextPrompts={getTextPrompts}
+              updateTextPrompts={updateTextPrompts}
+            />
 
-              {/* 精炼边缘开关 */}
-              {activeDraft.removeBackground && (
-                <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                      <Sparkles size={16} className="text-violet-500" />{" "}
-                      精炼边缘
-                    </label>
-                    <span className="text-xs text-gray-400">
-                      更高质量，但更慢
-                    </span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={activeDraft.refineForeground ?? false}
-                      onChange={(e) => {
-                        dispatch(
-                          updateMemeDraft({
-                            index: activeDraftIndex,
-                            draft: { refineForeground: e.target.checked },
-                          })
-                        );
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
-                  </label>
-                </div>
-              )}
-            </div>
+            {/* 擦除背景开关 */}
+            <BackgroundRemovalControls
+              activeDraft={activeDraft}
+              activeDraftIndex={activeDraftIndex}
+              onToggle={handleBackgroundRemovalToggle}
+            />
           </div>
         </div>
       </div>
 
-      <div className="px-6 md:px-12 pb-4 pt-2 bg-gradient-to-t from-gray-50 to-transparent max-w-6xl mx-auto w-full">
-        {pendingCount > 0 ? (
-          <>
-            <button
-              onClick={handleGenerateMemes}
-              disabled={isQuotaReached(pendingCount)}
-              className={`w-full py-4 rounded-2xl font-semibold shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                isQuotaReached(pendingCount)
-                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  : "bg-violet-600 text-white shadow-violet-200 hover:bg-violet-700"
-              }`}
-            >
-              <Wand2 size={18} />
-              {isQuotaReached(pendingCount)
-                ? "表情包制作额度已用完"
-                : memeDrafts.length > 1
-                ? `生成全部 (${pendingCount})`
-                : "生成表情"}
-            </button>
-            {isQuotaReached(pendingCount) && (
-              <p
-                onClick={() => dispatch(setIsPaymentModalOpen(true))}
-                className="text-center text-xs text-violet-600 mt-2 cursor-pointer hover:underline"
-              >
-                升级会员获取更多表情包制作额度 &rarr;
-              </p>
-            )}
-          </>
-        ) : (
-          <div className="space-y-3">
-            <button
-              onClick={exportWeChatPackage}
-              disabled={isExporting || !allCompleted}
-              className={`w-full py-4 rounded-2xl font-semibold shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                isExporting || !allCompleted
-                  ? "bg-gray-400 cursor-not-allowed text-white"
-                  : "bg-green-500 text-white shadow-green-200 hover:bg-green-600"
-              }`}
-              title={!allCompleted ? "请等待所有表情包生成完成" : ""}
-            >
-              {isExporting ? (
-                <Loader2 className="animate-spin" size={18} />
-              ) : (
-                <Package size={18} />
-              )}
-              {!allCompleted
-                ? memeDrafts.length > 1
-                  ? "生成中，请稍候..."
-                  : "生成中，请稍候..."
-                : memeDrafts.length > 1
-                ? "导出表情包 (ZIP)"
-                : "保存表情"}
-            </button>
-          </div>
-        )}
-      </div>
+      <GenerateButton
+        pendingCount={pendingCount}
+        isGenerating={isGenerating}
+        hasError={hasError}
+        allFailed={allFailed}
+        allCompleted={allCompleted}
+        isQuotaReached={isQuotaReached(pendingCount)}
+        onGenerate={handleGenerateMemes}
+        onUpgrade={() => dispatch(setIsPaymentModalOpen(true))}
+      />
 
       {/* Payment Modal */}
       <PaymentModal

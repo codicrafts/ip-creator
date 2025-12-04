@@ -51,6 +51,25 @@ export default function HistoryPage() {
   >({});
   const [isViewerImageLoading, setIsViewerImageLoading] = useState(true);
 
+  // 初始化图片加载状态 - 当历史记录加载完成时，初始化所有图片为加载中
+  useEffect(() => {
+    if (history.length > 0 && !isLoading) {
+      const initialStates: Record<string, boolean> = {};
+      history.forEach((item) => {
+        if (item && item.id && item.url) {
+          // 如果图片状态未设置，默认为加载中
+          if (imageLoadingStates[item.id] === undefined) {
+            initialStates[item.id] = true;
+          }
+        }
+      });
+      if (Object.keys(initialStates).length > 0) {
+        setImageLoadingStates((prev) => ({ ...prev, ...initialStates }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.length, isLoading]);
+
   // 当查看的图片变化时，重置加载状态
   useEffect(() => {
     if (viewingHistoryItem) {
@@ -91,6 +110,7 @@ export default function HistoryPage() {
               prompt: item.prompt || "",
               timestamp: item.timestamp || Date.now(),
               style: item.style || undefined,
+              type: item.type || undefined, // 保留类型字段：'scene' 或 'meme'
             }));
 
           if (formattedHistory.length > 0) {
@@ -203,7 +223,10 @@ export default function HistoryPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 pb-20">
+            <div
+              className="columns-2 md:columns-3 lg:columns-4 gap-4 md:gap-6 pb-20"
+              style={{ columnFill: "balance" }}
+            >
               {history
                 .filter((item) => item && item.id && item.url) // 过滤无效数据
                 .map((item) => (
@@ -217,7 +240,7 @@ export default function HistoryPage() {
                       }
                     }}
                     className={`
-                      bg-white rounded-2xl overflow-hidden shadow-sm border flex flex-col transition-all cursor-pointer group relative
+                      bg-white rounded-2xl overflow-hidden shadow-sm border flex flex-col transition-all cursor-pointer group relative mb-4 md:mb-6 break-inside-avoid
                       ${
                         isSelectionMode && selectedHistoryIds.includes(item.id)
                           ? "border-violet-500 ring-2 ring-violet-200"
@@ -225,20 +248,32 @@ export default function HistoryPage() {
                       }
                     `}
                   >
-                    <div className="relative aspect-square bg-gray-100 overflow-hidden">
-                      {/* 加载占位符 */}
+                    <div className="relative bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 overflow-hidden min-h-[200px]">
+                      {/* 加载占位符 - 骨架屏效果 */}
                       {imageLoadingStates[item.id] !== false && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 animate-pulse">
-                          <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100">
+                          {/* Shimmer 动画效果 */}
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer"></div>
+                          {/* 加载图标 */}
+                          <div className="relative z-10 flex flex-col items-center gap-2">
+                            <div className="w-10 h-10 border-[3px] border-violet-200 border-t-violet-500 rounded-full animate-spin"></div>
+                            <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-violet-200 via-violet-300 to-violet-200 animate-pulse"
+                                style={{ width: "60%" }}
+                              ></div>
+                            </div>
+                          </div>
                         </div>
                       )}
                       <img
                         src={getProxiedImageUrl(item.url || "")}
                         alt={item.prompt || "History"}
-                        className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${
+                        loading="lazy"
+                        className={`w-full h-auto object-cover group-hover:scale-105 transition-all duration-300 ${
                           imageLoadingStates[item.id] === false
                             ? "opacity-100"
-                            : "opacity-0"
+                            : "opacity-0 absolute"
                         }`}
                         onLoad={() => {
                           setImageLoadingStates((prev) => ({
@@ -267,6 +302,22 @@ export default function HistoryPage() {
                               <Square size={16} className="text-gray-400" />
                             </div>
                           )}
+                        </div>
+                      )}
+                      {/* 类型标注 */}
+                      {(item as any).type && (
+                        <div className="absolute top-2 left-2">
+                          <span
+                            className={`px-2 py-1 rounded-full text-[10px] font-semibold shadow-sm ${
+                              (item as any).type === "meme"
+                                ? "bg-violet-500 text-white"
+                                : "bg-blue-500 text-white"
+                            }`}
+                          >
+                            {(item as any).type === "meme"
+                              ? "表情包"
+                              : "场景扩展"}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -348,6 +399,22 @@ export default function HistoryPage() {
                 </div>
 
                 <div className="space-y-4 px-2">
+                  {/* 类型标注 */}
+                  {(viewingHistoryItem as any).type && (
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
+                          (viewingHistoryItem as any).type === "meme"
+                            ? "bg-violet-500 text-white"
+                            : "bg-blue-500 text-white"
+                        }`}
+                      >
+                        {(viewingHistoryItem as any).type === "meme"
+                          ? "表情包"
+                          : "场景扩展"}
+                      </span>
+                    </div>
+                  )}
                   <div className="text-white/80 space-y-1">
                     <p className="text-xs text-white/40">提示词</p>
                     <p className="text-sm font-medium">

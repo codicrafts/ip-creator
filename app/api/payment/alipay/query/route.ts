@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       alipayPublicKey: processedPublicKey || undefined,
       gateway: gatewayUrl,
       signType: ALIPAY_SIGN_TYPE as "RSA" | "RSA2",
-      timeout: 5000,
+      timeout: 180000, // 3 分钟超时
     });
 
     // 构建业务参数

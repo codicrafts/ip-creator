@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { UserTier, DailyUsage } from "@/types";
+import { getTodayDateString, normalizeDateString } from "@/lib/date-utils";
 
 export enum UserStatus {
   GUEST = "GUEST", // 游客
@@ -21,8 +22,8 @@ const initialState: UserState = {
   userId: null,
   phone: null,
   userTier: UserTier.FREE,
-  sceneUsage: { date: new Date().toLocaleDateString(), count: 0 },
-  memeUsage: { date: new Date().toLocaleDateString(), count: 0 },
+  sceneUsage: { date: getTodayDateString(), count: 0 },
+  memeUsage: { date: getTodayDateString(), count: 0 },
   membershipExpiresAt: null,
 };
 
@@ -65,8 +66,8 @@ const userSlice = createSlice({
       state.userId = null;
       state.phone = null;
       state.userTier = UserTier.FREE;
-      state.sceneUsage = { date: new Date().toLocaleDateString(), count: 0 };
-      state.memeUsage = { date: new Date().toLocaleDateString(), count: 0 };
+      state.sceneUsage = { date: getTodayDateString(), count: 0 };
+      state.memeUsage = { date: getTodayDateString(), count: 0 };
       state.membershipExpiresAt = null;
     },
     setSceneUsage: (state, action: PayloadAction<DailyUsage>) => {
@@ -80,36 +81,51 @@ const userSlice = createSlice({
       state.sceneUsage = action.payload;
     },
     updateSceneUsage: (state, action: PayloadAction<number>) => {
-      const today = new Date().toLocaleDateString();
-      if (state.sceneUsage.date !== today) {
+      const today = getTodayDateString();
+      // 统一日期格式后再比较
+      const currentDate = normalizeDateString(state.sceneUsage.date);
+      if (currentDate !== today) {
         state.sceneUsage = { date: today, count: action.payload };
       } else {
         state.sceneUsage.count += action.payload;
+        // 确保日期格式统一
+        state.sceneUsage.date = today;
       }
     },
     updateMemeUsage: (state, action: PayloadAction<number>) => {
-      const today = new Date().toLocaleDateString();
-      if (state.memeUsage.date !== today) {
+      const today = getTodayDateString();
+      // 统一日期格式后再比较
+      const currentDate = normalizeDateString(state.memeUsage.date);
+      if (currentDate !== today) {
         state.memeUsage = { date: today, count: action.payload };
       } else {
         state.memeUsage.count += action.payload;
+        // 确保日期格式统一
+        state.memeUsage.date = today;
       }
     },
     // 兼容旧代码
     updateUsage: (state, action: PayloadAction<number>) => {
-      const today = new Date().toLocaleDateString();
-      if (state.sceneUsage.date !== today) {
+      const today = getTodayDateString();
+      // 统一日期格式后再比较
+      const currentDate = normalizeDateString(state.sceneUsage.date);
+      if (currentDate !== today) {
         state.sceneUsage = { date: today, count: action.payload };
       } else {
         state.sceneUsage.count += action.payload;
+        // 确保日期格式统一
+        state.sceneUsage.date = today;
       }
     },
     resetDailyUsage: (state) => {
-      const today = new Date().toLocaleDateString();
-      if (state.sceneUsage.date !== today) {
+      const today = getTodayDateString();
+      // 统一日期格式后再比较
+      const sceneDate = normalizeDateString(state.sceneUsage.date);
+      const memeDate = normalizeDateString(state.memeUsage.date);
+      if (sceneDate !== today) {
         state.sceneUsage = { date: today, count: 0 };
       }
-      if (state.memeUsage.date !== today) {
+      if (memeDate !== today) {
         state.memeUsage = { date: today, count: 0 };
       }
     },
