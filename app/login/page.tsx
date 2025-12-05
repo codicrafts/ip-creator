@@ -16,7 +16,7 @@ import {
   setSceneUsage,
   setMemeUsage,
 } from "@/store/slices/userSlice";
-import { sendSmsCode, verifySmsCode, login } from "@/services/authService";
+import { sendSmsCode, verifySmsCode, login, setPassword as setUserPassword } from "@/services/authService";
 import { getUserInfo } from "@/services/userService";
 import { UserTier } from "@/types";
 
@@ -32,6 +32,13 @@ export default function LoginPage() {
   const [smsLoading, setSmsLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState("");
+  const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [newUserId, setNewUserId] = useState<string | null>(null);
 
   // 发送短信验证码
   const handleSendSmsCode = async () => {
@@ -102,7 +109,15 @@ export default function LoginPage() {
       dispatch(setSceneUsage(userData.sceneUsage));
       dispatch(setMemeUsage(userData.memeUsage));
 
-      // 跳转到首页
+      // 如果是新用户（首次注册），显示设置密码弹窗
+      if (userData.isNewUser) {
+        setNewUserId(userData.userId);
+        setShowSetPasswordModal(true);
+        setLoading(false);
+        return;
+      }
+
+      // 老用户直接跳转到首页
       router.push("/");
     } catch (err: any) {
       setError(err.message || "登录失败");
@@ -356,6 +371,135 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* 设置密码弹窗（新用户首次登录/注册时） */}
+      {showSetPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8 max-w-md w-full space-y-4">
+            <h3 className="text-xl font-bold text-gray-900">设置密码</h3>
+            <p className="text-sm text-gray-600">
+              为了您的账户安全，请设置一个密码。设置后可使用密码登录。
+            </p>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  密码
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <Lock size={20} />
+                  </div>
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="请输入密码（至少6位）"
+                    className="w-full pl-11 pr-12 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  确认密码
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <Lock size={20} />
+                  </div>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="请再次输入密码"
+                    className="w-full pl-11 pr-12 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  // 跳过设置密码，直接进入
+                  setShowSetPasswordModal(false);
+                  router.push("/");
+                }}
+                className="flex-1 py-3 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                disabled={settingPassword}
+              >
+                稍后设置
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!newUserId) return;
+
+                  setError("");
+                  setSettingPassword(true);
+
+                  try {
+                    // 验证密码长度
+                    if (newPassword.length < 6) {
+                      setError("密码至少6位");
+                      setSettingPassword(false);
+                      return;
+                    }
+
+                    // 验证两次密码是否一致
+                    if (newPassword !== confirmPassword) {
+                      setError("两次输入的密码不一致");
+                      setSettingPassword(false);
+                      return;
+                    }
+
+                    // 设置密码
+                    await setUserPassword(newUserId, newPassword);
+
+                    // 关闭弹窗并跳转
+                    setShowSetPasswordModal(false);
+                    router.push("/");
+                  } catch (err: any) {
+                    setError(err.message || "设置密码失败");
+                  } finally {
+                    setSettingPassword(false);
+                  }
+                }}
+                disabled={settingPassword || !newPassword || !confirmPassword}
+                className="flex-1 py-3 bg-violet-600 text-white rounded-xl font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {settingPassword ? "设置中..." : "确认设置"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

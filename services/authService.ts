@@ -38,7 +38,6 @@ export interface SendSmsCodeRequest {
 export interface SendSmsCodeResponse {
   success: boolean;
   message: string;
-  code?: string; // 仅开发环境返回
 }
 
 export interface VerifySmsCodeRequest {
@@ -52,6 +51,17 @@ export interface VerifySmsCodeResponse {
   userTier: "FREE" | "PREMIUM";
   sceneUsage: { date: string; count: number };
   memeUsage: { date: string; count: number };
+  isNewUser?: boolean; // 是否为新用户（需要设置密码）
+}
+
+export interface SetPasswordRequest {
+  userId: string;
+  password: string;
+}
+
+export interface SetPasswordResponse {
+  success: boolean;
+  message: string;
 }
 
 /**
@@ -220,7 +230,6 @@ export const sendSmsCode = async (
     return {
       success: true,
       message: result.message || "验证码已发送",
-      code: result.data?.code, // 仅开发环境有值
     };
   } catch (error: any) {
     console.error("Send SMS code error:", error);
@@ -264,9 +273,43 @@ export const verifySmsCode = async (
       userTier: data.userTier,
       sceneUsage: data.sceneUsage,
       memeUsage: data.memeUsage,
+      isNewUser: data.isNewUser || false,
     };
   } catch (error: any) {
     console.error("Verify SMS code error:", error);
     throw new Error(error.message || "验证失败");
+  }
+};
+
+/**
+ * 设置密码（首次登录/注册时）
+ * @param userId 用户ID
+ * @param password 密码
+ * @returns 设置结果
+ */
+export const setPassword = async (
+  userId: string,
+  password: string
+): Promise<SetPasswordResponse> => {
+  try {
+    const result = await callCloudFunction("auth", {
+      action: "setPassword",
+      userId,
+      password,
+    });
+
+    const response = result;
+
+    if (response.success !== 1) {
+      throw new Error(response.message || "设置密码失败");
+    }
+
+    return {
+      success: true,
+      message: response.message || "密码设置成功",
+    };
+  } catch (error: any) {
+    console.error("Set password error:", error);
+    throw new Error(error.message || "设置密码失败");
   }
 };

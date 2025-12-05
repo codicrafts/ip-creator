@@ -10,6 +10,7 @@ interface AppState {
   selectedHistoryIds: string[];
   isPaymentModalOpen: boolean;
   isQuotaModalOpen: boolean;
+  createPageMode: 'scene' | 'meme'; // 控制 /create 页面的默认 tab
 }
 
 const initialState: AppState = {
@@ -21,6 +22,7 @@ const initialState: AppState = {
   selectedHistoryIds: [],
   isPaymentModalOpen: false,
   isQuotaModalOpen: false,
+  createPageMode: 'scene', // 默认场景扩展模式
 };
 
 const appSlice = createSlice({
@@ -55,6 +57,9 @@ const appSlice = createSlice({
         }
       }
     },
+    setCreatePageMode: (state, action: PayloadAction<'scene' | 'meme'>) => {
+      state.createPageMode = action.payload;
+    },
     setIsPaymentModalOpen: (state, action: PayloadAction<boolean>) => {
       state.isPaymentModalOpen = action.payload;
     },
@@ -72,6 +77,7 @@ export const {
   setIsSelectionMode,
   setSelectedHistoryIds,
   toggleHistorySelection,
+  setCreatePageMode,
   setIsPaymentModalOpen,
   setIsQuotaModalOpen,
 } = appSlice.actions;

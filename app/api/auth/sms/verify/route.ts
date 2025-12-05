@@ -63,8 +63,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 检查验证码是否过期
-    if (Date.now() > codeRecord.expiresAt) {
+    // 检查验证码是否过期（5分钟有效期）
+    // 处理 expiresAt 可能是时间戳或 Date 对象的情况
+    let expiresAtTimestamp: number;
+    if (codeRecord.expiresAt instanceof Date) {
+      expiresAtTimestamp = codeRecord.expiresAt.getTime();
+    } else if (typeof codeRecord.expiresAt === 'number') {
+      expiresAtTimestamp = codeRecord.expiresAt;
+    } else {
+      // 如果没有 expiresAt 字段，视为已过期（兼容旧数据）
+      await db.collection("sms_codes").doc(codeRecord._id).remove();
+      return NextResponse.json({
+        success: 0,
+        message: "验证码已过期，请重新获取",
+      });
+    }
+
+    const now = Date.now();
+    if (now > expiresAtTimestamp) {
       // 删除过期验证码
       await db.collection("sms_codes").doc(codeRecord._id).remove();
       return NextResponse.json({
@@ -160,6 +176,9 @@ export async function POST(request: NextRequest) {
     const userDoc = await db.collection("users").doc(userId).get();
     const user = userDoc.data;
 
+    // 检查是否为新用户（没有密码）
+    const isNewUser = !user.password;
+
     return NextResponse.json({
       success: 1,
       message: "登录成功",
@@ -175,6 +194,7 @@ export async function POST(request: NextRequest) {
           date: today,
           count: 0,
         },
+        isNewUser: isNewUser, // 标识是否为新用户（需要设置密码）
       },
     });
   } catch (error: any) {

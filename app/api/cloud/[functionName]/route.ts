@@ -56,7 +56,7 @@ export async function POST(
  * 处理 auth 云函数
  */
 async function handleAuth(body: any, db: any) {
-  const { action, phone, password } = body;
+  const { action, phone, password, userId } = body;
 
   if (action === "login") {
     // 登录即注册：先查找用户，不存在则创建
@@ -160,6 +160,101 @@ async function handleAuth(body: any, db: any) {
         memeUsage: newUser.memeUsage,
       },
     });
+  } else if (action === "setPassword") {
+    // 设置密码（首次登录/注册时）
+    if (!userId || !password) {
+      return NextResponse.json({
+        success: 0,
+        message: "参数错误",
+      });
+    }
+
+    // 验证密码长度
+    if (password.length < 6) {
+      return NextResponse.json({
+        success: 0,
+        message: "密码至少6位",
+      });
+    }
+
+    try {
+      // 检查用户是否存在
+      const userResult = await db.collection("users").doc(userId).get();
+      if (!userResult.data) {
+        console.error("Set password: User not found", userId);
+        return NextResponse.json({
+          success: 0,
+          message: "用户不存在",
+        });
+      }
+
+      console.log(
+        "Set password: Updating user",
+        userId,
+        "password length:",
+        password.length
+      );
+
+      // 更新用户密码（微信云开发 update 操作会返回更新结果）
+      const updateResult = await db
+        .collection("users")
+        .doc(userId)
+        .update({
+          data: {
+            password: password, // 实际生产环境应该加密
+            updatedAt: new Date(),
+          },
+        });
+
+      console.log("Set password: Update completed", updateResult);
+
+      // 等待一小段时间确保更新生效（微信云开发可能需要短暂延迟）
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // 验证更新是否成功（读取用户数据确认密码已保存）
+      const verifyResult = await db.collection("users").doc(userId).get();
+      const updatedUser = verifyResult.data;
+
+      console.log(
+        "Set password: Verification - user exists:",
+        !!updatedUser,
+        "has password:",
+        !!updatedUser?.password
+      );
+
+      if (!updatedUser) {
+        console.error("Set password: User not found after update", userId);
+        return NextResponse.json({
+          success: 0,
+          message: "用户不存在",
+        });
+      }
+
+      if (!updatedUser.password || updatedUser.password !== password) {
+        console.error("Set password: Password not saved correctly", {
+          userId,
+          hasPassword: !!updatedUser.password,
+          passwordMatch: updatedUser.password === password,
+        });
+        return NextResponse.json({
+          success: 0,
+          message: "密码保存失败，请重试",
+        });
+      }
+
+      console.log("Set password: Success", userId);
+
+      return NextResponse.json({
+        success: 1,
+        message: "密码设置成功",
+      });
+    } catch (error: any) {
+      console.error("Set password error:", error);
+      return NextResponse.json({
+        success: 0,
+        message: error.message || "设置密码失败",
+      });
+    }
   } else {
     return NextResponse.json({
       success: 0,
@@ -313,16 +408,44 @@ async function handleUser(body: any, db: any) {
 
     const user = userResult.data;
     let sceneUsage = user.sceneUsage || { date: today, count: 0 };
+    const userTier = user.userTier || "FREE";
+    const membershipStartedAt = user.membershipStartedAt;
+    const isPremium = ["BASIC", "STANDARD", "PREMIUM"].includes(userTier);
 
-    // 统一日期格式后比较
-    const sceneUsageDate = normalizeDateString(sceneUsage.date);
+    if (isPremium && membershipStartedAt) {
+      // 会员用户：按月计算
+      const currentDate = new Date();
+      const currentMonth = `${currentDate.getFullYear()}-${String(
+        currentDate.getMonth() + 1
+      ).padStart(2, "0")}`;
 
-    // 如果日期不同，重置计数
-    if (sceneUsageDate !== today) {
-      sceneUsage = { date: today, count: increment || 1 };
+      // 检查 sceneUsage.date 的格式
+      const isSceneDateFormat =
+        sceneUsage.date &&
+        sceneUsage.date.length === 10 &&
+        sceneUsage.date.includes("-");
+
+      if (isSceneDateFormat || sceneUsage.date !== currentMonth) {
+        // 重置并增加
+        sceneUsage = { date: currentMonth, count: increment || 1 };
+      } else {
+        // 累加
+        sceneUsage = {
+          ...sceneUsage,
+          count: (sceneUsage.count || 0) + (increment || 1),
+          date: currentMonth,
+        };
+      }
     } else {
-      sceneUsage.count = (sceneUsage.count || 0) + (increment || 1);
-      sceneUsage.date = today; // 确保日期格式统一
+      // 免费用户：按日重置
+      const sceneUsageDate = normalizeDateString(sceneUsage.date);
+
+      if (sceneUsageDate !== today) {
+        sceneUsage = { date: today, count: increment || 1 };
+      } else {
+        sceneUsage.count = (sceneUsage.count || 0) + (increment || 1);
+        sceneUsage.date = today; // 确保日期格式统一
+      }
     }
 
     await db
@@ -354,16 +477,44 @@ async function handleUser(body: any, db: any) {
 
     const user = userResult.data;
     let memeUsage = user.memeUsage || { date: today, count: 0 };
+    const userTier = user.userTier || "FREE";
+    const membershipStartedAt = user.membershipStartedAt;
+    const isPremium = ["BASIC", "STANDARD", "PREMIUM"].includes(userTier);
 
-    // 统一日期格式后比较
-    const memeUsageDate = normalizeDateString(memeUsage.date);
+    if (isPremium && membershipStartedAt) {
+      // 会员用户：按月计算
+      const currentDate = new Date();
+      const currentMonth = `${currentDate.getFullYear()}-${String(
+        currentDate.getMonth() + 1
+      ).padStart(2, "0")}`;
 
-    // 如果日期不同，重置计数
-    if (memeUsageDate !== today) {
-      memeUsage = { date: today, count: increment || 1 };
+      // 检查 memeUsage.date 的格式
+      const isMemeDateFormat =
+        memeUsage.date &&
+        memeUsage.date.length === 10 &&
+        memeUsage.date.includes("-");
+
+      if (isMemeDateFormat || memeUsage.date !== currentMonth) {
+        // 重置并增加
+        memeUsage = { date: currentMonth, count: increment || 1 };
+      } else {
+        // 累加
+        memeUsage = {
+          ...memeUsage,
+          count: (memeUsage.count || 0) + (increment || 1),
+          date: currentMonth,
+        };
+      }
     } else {
-      memeUsage.count = (memeUsage.count || 0) + (increment || 1);
-      memeUsage.date = today; // 确保日期格式统一
+      // 免费用户：按日重置
+      const memeUsageDate = normalizeDateString(memeUsage.date);
+
+      if (memeUsageDate !== today) {
+        memeUsage = { date: today, count: increment || 1 };
+      } else {
+        memeUsage.count = (memeUsage.count || 0) + (increment || 1);
+        memeUsage.date = today; // 确保日期格式统一
+      }
     }
 
     await db

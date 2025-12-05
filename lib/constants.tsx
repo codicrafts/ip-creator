@@ -257,5 +257,5 @@ export const STORAGE_KEY = "ip_creative_history_v1";
 export const USER_TIER_KEY = "ip_creative_user_tier";
 export const DAILY_USAGE_KEY = "ip_creative_daily_usage";
 export const MAX_HISTORY_ITEMS = 10;
-export const FREE_DAILY_LIMIT = 5;
+export const FREE_DAILY_LIMIT = 3;
 export const PREMIUM_DAILY_LIMIT = 50;

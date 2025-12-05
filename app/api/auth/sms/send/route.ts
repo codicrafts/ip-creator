@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 将验证码存储到数据库（设置5分钟过期时间）
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5分钟后过期
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5分钟后过期（时间戳格式）
 
     // 先删除该手机号的旧验证码（确保唯一性）
     const oldCodes = await db
@@ -155,15 +155,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 开发环境返回验证码（方便测试），生产环境不返回
-    const isDev = process.env.NODE_ENV === "development";
-
+    // 不返回验证码，确保安全性
     return NextResponse.json({
       success: 1,
       message: "验证码已发送",
-      data: {
-        ...(isDev && { code }), // 仅开发环境返回验证码
-      },
     });
   } catch (error: any) {
     console.error("发送短信验证码失败:", error);

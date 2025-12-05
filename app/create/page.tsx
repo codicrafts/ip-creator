@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Sparkles, Smile, Lock } from "lucide-react";
-import { useRef, useState } from "react";
-import { useAppDispatch } from "@/store/hooks";
+import { useRef, useState, useEffect } from "react";
+import { useAppDispatch, useAppSelector } from "@/store/hooks"; // Updated import
 import {
   setSourceImage,
   setSceneDrafts,
@@ -18,9 +18,16 @@ type UploadMode = "scene" | "meme";
 export default function CreatePage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const createPageMode = useAppSelector((state) => state.app.createPageMode); // Get createPageMode from Redux
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadMode, setUploadMode] = useState<UploadMode>("scene");
   const featureDisabled = isFeatureDisabled();
+
+  useEffect(() => {
+    if (createPageMode) {
+      setUploadMode(createPageMode);
+    }
+  }, [createPageMode]);
 
   const triggerFileInput = () => {
     fileInputRef.current?.click();

@@ -62,15 +62,14 @@ import {
   generateExtendedScene,
   generateBatchExtendedScenes,
 } from "@/services/geminiService";
-import { PRESET_STYLES } from "@/lib/constants";
+import { PRESET_STYLES, FREE_DAILY_LIMIT } from "@/lib/constants";
 import { getMembershipPlan } from "@/lib/membership";
 import { getProxiedImageUrl } from "@/lib/image-storage";
 import { getTodayDateString, normalizeDateString } from "@/lib/date-utils";
 import { useEffect, useRef, useState, useMemo } from "react";
 import JSZip from "jszip";
 
-const GUEST_DAILY_LIMIT = 1; // 游客1次
-const FREE_DAILY_LIMIT = 5; // 普通用户5次
+const GUEST_DAILY_LIMIT = 0; // 游客0次
 
 export default function EditPage() {
   const router = useRouter();
@@ -270,16 +269,44 @@ export default function EditPage() {
     return GUEST_DAILY_LIMIT;
   };
   const isQuotaReached = (amount = 1) => {
-    const today = getTodayDateString();
+    // 游客没有额度
+    if (userStatus === "GUEST") return true;
+
+    const limit = getLimit();
+
+    // 会员 (信任后端返回的计数)
+    if (isMembershipValid) {
+      return sceneUsage.count + amount > limit;
+    }
+
+    // 免费用户 (跨天自动重置)
+    const today = normalizeDateString(getTodayDateString());
     const usageDate = normalizeDateString(sceneUsage.date);
-    if (usageDate !== today) return false;
-    return sceneUsage.count + amount > getLimit();
+    
+    // 如果是新的一天，当前使用量视为0
+    const currentUsage = usageDate !== today ? 0 : sceneUsage.count;
+    
+    return currentUsage + amount > limit;
   };
+
   const remainingQuota = () => {
-    const today = getTodayDateString();
+    // 游客没有额度
+    if (userStatus === "GUEST") return 0;
+
+    const limit = getLimit();
+
+    // 会员
+    if (isMembershipValid) {
+      return Math.max(0, limit - sceneUsage.count);
+    }
+
+    // 免费用户
+    const today = normalizeDateString(getTodayDateString());
     const usageDate = normalizeDateString(sceneUsage.date);
-    if (usageDate !== today) return getLimit();
-    return Math.max(0, getLimit() - sceneUsage.count);
+    
+    if (usageDate !== today) return limit;
+    
+    return Math.max(0, limit - sceneUsage.count);
   };
 
   // 检查是否可以生成（用于按钮disabled状态）
@@ -401,6 +428,10 @@ export default function EditPage() {
         : 1;
 
     if (isQuotaReached(pendingCount)) {
+      if (userStatus === "GUEST") {
+        router.push("/login");
+        return;
+      }
       dispatch(setIsQuotaModalOpen(true));
       return;
     }
@@ -583,6 +614,10 @@ export default function EditPage() {
 
     // 检查配额
     if (isQuotaReached(1)) {
+      if (userStatus === "GUEST") {
+        router.push("/login");
+        return;
+      }
       dispatch(setIsQuotaModalOpen(true));
       return;
     }

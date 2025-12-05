@@ -37,7 +37,7 @@ import {
 import { UserTier, MemeDraft } from "@/types";
 import { getMembershipPlan } from "@/lib/membership";
 import { generateSticker } from "@/services/geminiService";
-import { MOOD_PACKS } from "@/lib/constants";
+import { MOOD_PACKS, FREE_DAILY_LIMIT } from "@/lib/constants";
 import { getTodayDateString, normalizeDateString } from "@/lib/date-utils";
 import { AnimationType } from "@/types";
 import Loader from "@/components/Loader";
@@ -402,8 +402,7 @@ export default function MemeEditorPage() {
     });
   }, [memeDrafts, getTextPrompts]);
 
-  const GUEST_DAILY_LIMIT = 1; // 游客1次
-  const FREE_DAILY_LIMIT = 5; // 普通用户5次
+  const GUEST_DAILY_LIMIT = 0; // 游客0次
 
   // 检查是否为会员（包括所有付费会员等级）
   const isPremium = useMemo(() => {
@@ -446,16 +445,44 @@ export default function MemeEditorPage() {
     return GUEST_DAILY_LIMIT;
   };
   const isQuotaReached = (amount = 1) => {
-    const today = getTodayDateString();
+    // 游客没有额度
+    if (userStatus === "GUEST") return true;
+
+    const limit = getLimit();
+
+    // 会员 (信任后端返回的计数)
+    if (isMembershipValid) {
+      return memeUsage.count + amount > limit;
+    }
+
+    // 免费用户 (跨天自动重置)
+    const today = normalizeDateString(getTodayDateString());
     const usageDate = normalizeDateString(memeUsage.date);
-    if (usageDate !== today) return false;
-    return memeUsage.count + amount > getLimit();
+
+    // 如果是新的一天，当前使用量视为0
+    const currentUsage = usageDate !== today ? 0 : memeUsage.count;
+
+    return currentUsage + amount > limit;
   };
+
   const remainingQuota = () => {
-    const today = getTodayDateString();
+    // 游客没有额度
+    if (userStatus === "GUEST") return 0;
+
+    const limit = getLimit();
+
+    // 会员
+    if (isMembershipValid) {
+      return Math.max(0, limit - memeUsage.count);
+    }
+
+    // 免费用户
+    const today = normalizeDateString(getTodayDateString());
     const usageDate = normalizeDateString(memeUsage.date);
-    if (usageDate !== today) return getLimit();
-    return Math.max(0, getLimit() - memeUsage.count);
+
+    if (usageDate !== today) return limit;
+
+    return Math.max(0, limit - memeUsage.count);
   };
 
   // Removed handleFileChange and triggerFileInput - now using useMemeFileUpload hook
@@ -703,14 +730,14 @@ export default function MemeEditorPage() {
       getTextPrompts,
       getGroupResults,
       processedImageRef,
-      isQuotaReached: (amount = 1) => {
-        const today = getTodayDateString();
-        const usageDate = normalizeDateString(memeUsage.date);
-        if (usageDate !== today) return false;
-        return memeUsage.count + amount > getLimit();
+      isQuotaReached,
+      setIsQuotaModalOpen: (open: boolean) => {
+        if (open && userStatus === "GUEST") {
+          router.push("/login");
+        } else {
+          dispatch(setIsQuotaModalOpen(open));
+        }
       },
-      setIsQuotaModalOpen: (open: boolean) =>
-        dispatch(setIsQuotaModalOpen(open)),
       setIsProcessingBackground,
       textPromptsRef, // 传递 textPromptsRef 以便直接访问数据
     });
