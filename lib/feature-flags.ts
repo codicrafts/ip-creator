@@ -25,6 +25,16 @@
  * 设置为 "true" 时，会禁用主要功能并显示"待开放"提示
  */
 export const isFeatureDisabled = (): boolean => {
-  // 线上环境放开所有功能
+  // 优先检查环境变量
+  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_FEATURE_DISABLED === "true") {
+    return true;
+  }
+  
+  // 生产环境默认关闭购买功能
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "production") {
+    return true;
+  }
+  
+  // 开发环境默认开启
   return false;
 };

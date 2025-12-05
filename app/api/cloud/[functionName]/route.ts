@@ -72,9 +72,13 @@ async function handleAuth(body: any, db: any) {
     if (result.data.length === 0) {
       // 用户不存在，自动创建新用户
       const today = getTodayDateString();
+      const salt = generateSalt();
+      const hashedPassword = hashPassword(password, salt);
+      
       const newUser = {
         phone: phone,
-        password: password, // 实际生产环境应该加密
+        password: hashedPassword,
+        salt: salt, // 存储盐值，用于验证
         userTier: "FREE",
         sceneUsage: { date: today, count: 0 },
         memeUsage: { date: today, count: 0 },
@@ -93,7 +97,25 @@ async function handleAuth(body: any, db: any) {
     } else {
       // 用户存在，验证密码
       user = result.data[0];
-      if (user.password !== password) {
+      
+      // 使用存储的盐值哈希输入的密码
+      // 兼容老用户（没有 salt 字段）
+      const salt = user.salt || user.alt || "";
+      console.log("Set password: User salt fields", { 
+        salt: user.salt, 
+        alt: user.alt, 
+        usingSalt: salt 
+      });
+      
+      const hashedInputPassword = hashPassword(password, salt);
+      console.log("Set password: Hash comparison", { 
+        inputPassword: password,
+        salt: salt,
+        hashedInputPassword,
+        storedPassword: user.password
+      });
+      
+      if (user.password !== hashedInputPassword) {
         return NextResponse.json({
           success: 0,
           message: "密码错误",
@@ -136,9 +158,12 @@ async function handleAuth(body: any, db: any) {
 
     // 创建新用户
     const today = getTodayDateString();
+    const salt = generateSalt();
+    const hashedPassword = hashPassword(password, salt);
     const newUser = {
       phone: phone,
-      password: password, // 实际生产环境应该加密
+      password: hashedPassword,
+      salt: salt, // 存储盐值，用于验证
       userTier: "FREE",
       sceneUsage: { date: today, count: 0 },
       memeUsage: { date: today, count: 0 },
@@ -195,13 +220,18 @@ async function handleAuth(body: any, db: any) {
         password.length
       );
 
+      // 生成新的盐值并哈希密码
+      const salt = generateSalt();
+      const hashedPassword = hashPassword(password, salt);
+
       // 更新用户密码（微信云开发 update 操作会返回更新结果）
       const updateResult = await db
         .collection("users")
         .doc(userId)
         .update({
           data: {
-            password: password, // 实际生产环境应该加密
+            password: hashedPassword,
+            salt: salt, // 存储新的盐值
             updatedAt: new Date(),
           },
         });
@@ -230,11 +260,19 @@ async function handleAuth(body: any, db: any) {
         });
       }
 
-      if (!updatedUser.password || updatedUser.password !== password) {
+      // 验证密码是否保存成功
+      const passwordSaved = !!updatedUser.password;
+      const passwordMatches = updatedUser.password === hashedPassword;
+      
+      if (!passwordSaved || !passwordMatches) {
         console.error("Set password: Password not saved correctly", {
           userId,
-          hasPassword: !!updatedUser.password,
-          passwordMatch: updatedUser.password === password,
+          hasPassword: passwordSaved,
+          passwordMatch: passwordMatches,
+          inputPassword: password,
+          storedPassword: updatedUser.password,
+          inputHashedPassword: hashedPassword,
+          salt: salt,
         });
         return NextResponse.json({
           success: 0,
@@ -2076,4 +2114,27 @@ async function handleLibrary(body: any, db: any) {
       message: "未知操作",
     });
   }
+}
+
+/**
+ * 密码哈希加盐工具函数
+ * @param password 明文密码
+ * @param salt 盐值
+ * @returns 哈希后的密码
+ */
+function hashPassword(password: string, salt: string): string {
+  // 使用 PBKDF2 进行密码哈希（更安全）
+  const iterations = 10000; // 迭代次数
+  const keylen = 64; // 输出长度
+  const digest = "sha512";
+  
+  return crypto.pbkdf2Sync(password, salt, iterations, keylen, digest).toString("hex");
+}
+
+/**
+ * 生成随机盐值
+ * @returns 随机盐值
+ */
+function generateSalt(): string {
+  return crypto.randomBytes(16).toString("hex");
 }

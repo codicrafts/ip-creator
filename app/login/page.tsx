@@ -480,8 +480,12 @@ export default function LoginPage() {
                     }
 
                     // 设置密码
+                    console.log("Set password: Client calling setUserPassword", { userId: newUserId, passwordLength: newPassword.length });
+                    
                     await setUserPassword(newUserId, newPassword);
-
+                    
+                    console.log("Set password: Client success, closing modal");
+                    
                     // 关闭弹窗并跳转
                     setShowSetPasswordModal(false);
                     router.push("/");

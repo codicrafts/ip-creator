@@ -292,24 +292,31 @@ export const setPassword = async (
   password: string
 ): Promise<SetPasswordResponse> => {
   try {
+    console.log("Set password: Starting request", { userId, passwordLength: password.length });
+    
     const result = await callCloudFunction("auth", {
       action: "setPassword",
       userId,
       password,
     });
 
+    console.log("Set password: Received response", result);
+
     const response = result;
 
     if (response.success !== 1) {
+      console.error("Set password: Server returned error", response);
       throw new Error(response.message || "设置密码失败");
     }
+
+    console.log("Set password: Server response success", response.message);
 
     return {
       success: true,
       message: response.message || "密码设置成功",
     };
   } catch (error: any) {
-    console.error("Set password error:", error);
+    console.error("Set password: Client error", error);
     throw new Error(error.message || "设置密码失败");
   }
 };
