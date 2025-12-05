@@ -5,9 +5,9 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # 复制包管理文件以利用 Docker 缓存层
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.yaml* ./
 
-RUN npm install -g pnpm
+RUN npm install pnpm --save-dev
 
 # 安装依赖（包括 devDependencies，因为需要构建）
 RUN pnpm install
