@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Check, Crown, Sparkles } from "lucide-react";
 import { UserTier } from "@/types";
 import { getPaidMembershipPlans, MembershipPlan } from "@/lib/membership";
-import { isFeatureDisabled } from "@/lib/feature-flags";
+import { isPurchaseDisabled } from "@/lib/feature-flags";
 
 interface MembershipPlansProps {
   selectedPlan?: UserTier;
@@ -23,7 +23,7 @@ const MembershipPlans: React.FC<MembershipPlansProps> = ({
   // 如果有选中的计划，优先显示选中的计划
   const initialActiveTab = selectedPlan || defaultActiveTab;
   const [activeTab, setActiveTab] = useState<UserTier>(initialActiveTab);
-  const featureDisabled = isFeatureDisabled();
+  const purchaseDisabled = isPurchaseDisabled();
 
   // 当 selectedPlan 变化时，同步更新 activeTab
   React.useEffect(() => {
@@ -148,12 +148,12 @@ const MembershipPlans: React.FC<MembershipPlansProps> = ({
 
         {/* 选择按钮 */}
         <button
-          onClick={() => !featureDisabled && onSelectPlan(plan.id)}
-          disabled={featureDisabled}
+          onClick={() => !purchaseDisabled && onSelectPlan(plan.id)}
+          disabled={purchaseDisabled}
           className={`
             w-full py-2 md:py-2.5 rounded-lg md:rounded-xl font-semibold text-xs md:text-sm transition-all mt-auto
             ${
-              featureDisabled
+              purchaseDisabled
                 ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                 : isSelected
                 ? `bg-white ${getPriceColor(
@@ -163,7 +163,7 @@ const MembershipPlans: React.FC<MembershipPlansProps> = ({
             }
           `}
         >
-          {featureDisabled ? "待开放" : isSelected ? "已选择" : "选择此计划"}
+          {purchaseDisabled ? "待开放" : isSelected ? "已选择" : "选择此计划"}
         </button>
       </div>
     );

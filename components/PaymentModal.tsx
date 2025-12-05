@@ -21,7 +21,7 @@ import {
 import { getUserId } from "@/lib/cookies";
 import MembershipPlans from "./MembershipPlans";
 import { getMembershipPlan, getPaidMembershipPlans } from "@/lib/membership";
-import { isFeatureDisabled } from "@/lib/feature-flags";
+import { isPurchaseDisabled } from "@/lib/feature-flags";
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -51,7 +51,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [isFirstMonth, setIsFirstMonth] = useState(true); // 默认首月，后续可以从订单历史判断
   const [isMobile, setIsMobile] = useState(false);
   const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
-  const featureDisabled = isFeatureDisabled();
+  const purchaseDisabled = isPurchaseDisabled();
 
   // 检测移动端
   useEffect(() => {
@@ -624,9 +624,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           {paymentStatus === "idle" && selectedPlan && (
             <button
               onClick={handlePayment}
-              disabled={!selectedMethod || isProcessing || featureDisabled}
+              disabled={!selectedMethod || isProcessing || purchaseDisabled}
               className={`w-full py-3 md:py-4 rounded-lg md:rounded-xl font-semibold text-sm md:text-base text-white transition-all flex items-center justify-center gap-2 ${
-                !selectedMethod || isProcessing || featureDisabled
+                !selectedMethod || isProcessing || purchaseDisabled
                   ? "bg-gray-300 cursor-not-allowed"
                   : "bg-violet-600 hover:bg-violet-700 active:scale-95"
               }`}
@@ -636,7 +636,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   <Loader2 className="animate-spin w-4 h-4 md:w-[18px] md:h-[18px]" />
                   处理中...
                 </>
-              ) : featureDisabled ? (
+              ) : purchaseDisabled ? (
                 <>
                   <CreditCard size={16} className="md:w-[18px] md:h-[18px]" />
                   待开放
