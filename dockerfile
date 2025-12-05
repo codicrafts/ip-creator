@@ -1,13 +1,13 @@
 # 使用 Node.js 镜像作为构建环境
 FROM node:22-alpine AS builder
 
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # 设置工作目录
 WORKDIR /app
 
 # 复制包管理文件以利用 Docker 缓存层
-COPY package.json package-lock.yaml* ./
-
-RUN npm install pnpm --save-dev
+COPY package.json pnpm-lock.yaml* ./
 
 # 安装依赖（包括 devDependencies，因为需要构建）
 RUN pnpm install
