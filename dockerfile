@@ -7,6 +7,8 @@ WORKDIR /app
 # 复制包管理文件以利用 Docker 缓存层
 COPY package.json package-lock.json* ./
 
+RUN npm install -g pnpm
+
 # 安装依赖（包括 devDependencies，因为需要构建）
 RUN pnpm install
 
