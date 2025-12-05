@@ -278,7 +278,7 @@ async function handleUser(body: any, db: any) {
 
   const today = getTodayDateString();
 
-  if (action === "getInfo") {
+  if (action === "getInfo" || action === "get") {
     // 获取用户信息
     const result = await db.collection("users").doc(userId).get();
 
@@ -327,27 +327,35 @@ async function handleUser(body: any, db: any) {
       ).padStart(2, "0")}`;
 
       // 检查 sceneUsage.date 的格式
-      // 如果是日期格式（包含 "-" 且长度为 10，如 "2024-01-15"），说明是从免费用户升级的，需要重置
-      // 如果是月份格式（长度为 7，如 "2024-01"），则按月份比较
-      const isSceneDateFormat =
-        sceneUsage.date &&
-        sceneUsage.date.length === 10 &&
-        sceneUsage.date.includes("-");
-      const isMemeDateFormat =
-        memeUsage.date &&
-        memeUsage.date.length === 10 &&
-        memeUsage.date.includes("-");
+      const sceneUsageDate = normalizeDateString(sceneUsage.date);
+      const isSceneDateFormat = sceneUsageDate.includes("-");
 
-      // 如果日期格式不匹配（从免费用户升级），或者月份不同，重置计数
-      if (isSceneDateFormat || sceneUsage.date !== currentMonth) {
+      if (!isSceneDateFormat || sceneUsageDate !== startMonth) {
+        // 重置并增加
         sceneUsage = { date: currentMonth, count: 0 };
       } else {
-        sceneUsage = { ...sceneUsage, date: currentMonth };
+        // 累加
+        sceneUsage = {
+          ...sceneUsage,
+          count: (sceneUsage.count || 0) + (increment || 1),
+          date: currentMonth,
+        };
       }
-      if (isMemeDateFormat || memeUsage.date !== currentMonth) {
+
+      // 检查 memeUsage.date 的格式
+      const memeUsageDate = normalizeDateString(memeUsage.date);
+      const isMemeDateFormat = memeUsageDate.includes("-");
+
+      if (!isMemeDateFormat || memeUsageDate !== startMonth) {
+        // 重置并增加
         memeUsage = { date: currentMonth, count: 0 };
       } else {
-        memeUsage = { ...memeUsage, date: currentMonth };
+        // 累加
+        memeUsage = {
+          ...memeUsage,
+          count: (memeUsage.count || 0) + (increment || 1),
+          date: currentMonth,
+        };
       }
 
       // 如果使用次数需要重置，更新数据库
@@ -377,6 +385,7 @@ async function handleUser(body: any, db: any) {
       } else {
         sceneUsage = { ...sceneUsage, date: today };
       }
+
       if (memeUsageDate !== today) {
         memeUsage = { date: today, count: 0 };
       } else {

@@ -51,56 +51,56 @@ export default function ProfilePage() {
   const featureDisabled = isFeatureDisabled();
 
   // 页面加载时刷新用户信息（特别是从支付成功页面跳转过来时）
-  useEffect(() => {
-    // 检查是否有刷新标志（从支付成功页面跳转过来）
-    const shouldRefresh = searchParams.get("refresh") === "true";
-
-    // 如果是从支付成功页面跳转过来，或者用户已登录，则刷新用户信息
-    if (userStatus === "LOGGED_IN" && userId) {
-      // 如果有 refresh 参数，立即刷新；或者如果是会员但 membershipExpiresAt 为空，也需要刷新
-      const needsRefresh = shouldRefresh || (isPremium && !membershipExpiresAt);
-
-      if (needsRefresh && !hasRefreshedRef.current) {
-        hasRefreshedRef.current = true;
-        setIsLoadingUserInfo(true);
-
-        // 刷新用户信息
-        getUserInfo(userId)
-          .then((userInfo) => {
-            console.log("[Profile] 刷新用户信息成功:", userInfo);
-            dispatch(setUserTier(userInfo.userTier));
-            dispatch(setSceneUsage(userInfo.sceneUsage));
-            dispatch(setMemeUsage(userInfo.memeUsage));
-            if (userInfo.membershipExpiresAt !== undefined) {
-              dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
-            }
-            setIsLoadingUserInfo(false);
-
-            // 如果有 refresh 参数，清除它
-            if (shouldRefresh) {
-              router.replace("/profile", { scroll: false });
-            }
-          })
-          .catch((err) => {
-            console.error("[Profile] 刷新用户信息失败:", err);
-            setIsLoadingUserInfo(false);
-          });
-      } else {
-        // 如果不需要刷新，确保 loading 状态为 false
-        setIsLoadingUserInfo(false);
-      }
-    } else {
-      setIsLoadingUserInfo(false);
-    }
-  }, [
-    userStatus,
-    userId,
-    searchParams,
-    router,
-    dispatch,
-    isPremium,
-    membershipExpiresAt,
-  ]);
+  // useEffect(() => {
+  //   // 检查是否有刷新标志（从支付成功页面跳转过来）
+  //   const shouldRefresh = searchParams.get("refresh") === "true";
+  //
+  //   // 如果是从支付成功页面跳转过来，或者用户已登录，则刷新用户信息
+  //   if (userStatus === "LOGGED_IN" && userId) {
+  //     // 如果有 refresh 参数，立即刷新；或者如果是会员但 membershipExpiresAt 为空，也需要刷新
+  //     const needsRefresh = shouldRefresh || (isPremium && !membershipExpiresAt);
+  //
+  //     if (needsRefresh && !hasRefreshedRef.current) {
+  //       hasRefreshedRef.current = true;
+  //       setIsLoadingUserInfo(true);
+  //
+  //       // 刷新用户信息
+  //       getUserInfo(userId)
+  //         .then((userInfo) => {
+  //           console.log("[Profile] 刷新用户信息成功:", userInfo);
+  //           dispatch(setUserTier(userInfo.userTier));
+  //           dispatch(setSceneUsage(userInfo.sceneUsage));
+  //           dispatch(setMemeUsage(userInfo.memeUsage));
+  //           if (userInfo.membershipExpiresAt !== undefined) {
+  //             dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+  //           }
+  //           setIsLoadingUserInfo(false);
+  //
+  //           // 如果有 refresh 参数，清除它
+  //           if (shouldRefresh) {
+  //             router.replace("/profile", { scroll: false });
+  //           }
+  //         })
+  //         .catch((err) => {
+  //           console.error("[Profile] 刷新用户信息失败:", err);
+  //           setIsLoadingUserInfo(false);
+  //         });
+  //     } else {
+  //       // 如果不需要刷新，确保 loading 状态为 false
+  //       setIsLoadingUserInfo(false);
+  //     }
+  //   } else {
+  //     setIsLoadingUserInfo(false);
+  //   }
+  // }, [
+  //   userStatus,
+  //   userId,
+  //   searchParams,
+  //   router,
+  //   dispatch,
+  //   isPremium,
+  //   membershipExpiresAt,
+  // ]);
 
   // 如果用户是会员但 membershipExpiresAt 为空，定期检查用户信息变化（用于支付成功后自动刷新）
   useEffect(() => {
@@ -126,19 +126,26 @@ export default function ProfilePage() {
         pollCount++;
         console.log(`[Profile] 检查用户信息变化 (第 ${pollCount} 次)`);
 
-        const userInfo = await getUserInfo(userId);
+        // SSR 已获取用户信息，无需再次请求
+        // const userInfo = await getUserInfo(userId);
+        // dispatch(setUserTier(userInfo.userTier));
+        // dispatch(setSceneUsage(userInfo.sceneUsage));
+        // dispatch(setMemeUsage(userInfo.memeUsage));
+        // if (userInfo.membershipExpiresAt !== undefined) {
+        //   dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+        // }
 
         // 如果检测到 membershipExpiresAt 已更新，说明支付成功
-        if (userInfo.membershipExpiresAt) {
-          console.log(
-            "[Profile] ✅ 检测到用户信息已更新（membershipExpiresAt 已设置），刷新页面"
-          );
-          clearInterval(pollTimer);
+        // if (userInfo.membershipExpiresAt) {
+        //   console.log(
+        //     "[Profile] ✅ 检测到用户信息已更新（membershipExpiresAt 已设置），刷新页面"
+        //   );
+        //   clearInterval(pollTimer);
 
-          // 硬刷新页面
-          window.location.reload();
-          return;
-        }
+        //   // 硬刷新页面
+        //   window.location.reload();
+        //   return;
+        // }
 
         // 如果已达到最大轮询次数，停止轮询
         if (pollCount >= maxPollCount) {

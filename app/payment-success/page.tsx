@@ -107,15 +107,16 @@ export default function PaymentSuccessPage() {
           setMessage("支付成功！");
 
           try {
-            if (userId) {
-              const userInfo = await getUserInfo(userId);
-            dispatch(setUserTier(userInfo.userTier));
-            dispatch(setSceneUsage(userInfo.sceneUsage));
-            dispatch(setMemeUsage(userInfo.memeUsage));
-            if (userInfo.membershipExpiresAt !== undefined) {
-              dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
-              }
-            }
+            // SSR 已获取用户信息，无需再次请求
+            // if (userId) {
+            //   const userInfo = await getUserInfo(userId);
+            //   dispatch(setUserTier(userInfo.userTier));
+            //   dispatch(setSceneUsage(userInfo.sceneUsage));
+            //   dispatch(setMemeUsage(userInfo.memeUsage));
+            //   if (userInfo.membershipExpiresAt !== undefined) {
+            //     dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+            //   }
+            // }
           } catch (err) {
             // 忽略刷新用户信息失败
           }

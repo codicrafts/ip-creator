@@ -25,21 +25,6 @@
  * 设置为 "true" 时，会禁用主要功能并显示"待开放"提示
  */
 export const isFeatureDisabled = (): boolean => {
-  // 检查环境变量（优先级最高）
-  const envValue = process.env.NEXT_PUBLIC_FEATURE_DISABLED;
-
-  // 如果环境变量设置为 "true"，则启用"待开放"模式
-  if (envValue === "true") {
-    return true;
-  }
-
-  // 如果环境变量设置为 "false"，则禁用"待开放"模式（即使在生产环境）
-  if (envValue === "false") {
-    return false;
-  }
-
-  // 默认情况下，根据 NODE_ENV 判断
-  // 生产环境（production）启用"待开放"模式
-  // 开发环境（development）不启用
-  return process.env.NODE_ENV === "production";
+  // 线上环境放开所有功能
+  return false;
 };
