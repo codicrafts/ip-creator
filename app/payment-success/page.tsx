@@ -109,11 +109,11 @@ export default function PaymentSuccessPage() {
           try {
             if (userId) {
               const userInfo = await getUserInfo(userId);
-              dispatch(setUserTier(userInfo.userTier));
-              dispatch(setSceneUsage(userInfo.sceneUsage));
-              dispatch(setMemeUsage(userInfo.memeUsage));
-              if (userInfo.membershipExpiresAt !== undefined) {
-                dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
+            dispatch(setUserTier(userInfo.userTier));
+            dispatch(setSceneUsage(userInfo.sceneUsage));
+            dispatch(setMemeUsage(userInfo.memeUsage));
+            if (userInfo.membershipExpiresAt !== undefined) {
+              dispatch(setMembershipExpiresAt(userInfo.membershipExpiresAt));
               }
             }
           } catch (err) {
@@ -144,13 +144,13 @@ export default function PaymentSuccessPage() {
                 try {
                   if (userId) {
                     const userInfo = await getUserInfo(userId);
-                    dispatch(setUserTier(userInfo.userTier));
-                    dispatch(setSceneUsage(userInfo.sceneUsage));
-                    dispatch(setMemeUsage(userInfo.memeUsage));
-                    if (userInfo.membershipExpiresAt !== undefined) {
-                      dispatch(
-                        setMembershipExpiresAt(userInfo.membershipExpiresAt)
-                      );
+                  dispatch(setUserTier(userInfo.userTier));
+                  dispatch(setSceneUsage(userInfo.sceneUsage));
+                  dispatch(setMemeUsage(userInfo.memeUsage));
+                  if (userInfo.membershipExpiresAt !== undefined) {
+                    dispatch(
+                      setMembershipExpiresAt(userInfo.membershipExpiresAt)
+                    );
                     }
                   }
                 } catch (err) {

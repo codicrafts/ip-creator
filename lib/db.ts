@@ -59,21 +59,21 @@ export async function getUserInfoFromDB(userId: string) {
 
     // 只有免费用户才按天重置
     if (userTier === "FREE") {
-      // 统一日期格式后比较
-      const sceneUsageDate = normalizeDateString(sceneUsage.date);
-      const memeUsageDate = normalizeDateString(memeUsage.date);
+    // 统一日期格式后比较
+    const sceneUsageDate = normalizeDateString(sceneUsage.date);
+    const memeUsageDate = normalizeDateString(memeUsage.date);
 
-      if (sceneUsageDate !== today) {
-        sceneUsage = { date: today, count: 0 };
-      } else {
-        // 确保日期格式统一
-        sceneUsage = { ...sceneUsage, date: today };
-      }
-      if (memeUsageDate !== today) {
-        memeUsage = { date: today, count: 0 };
-      } else {
-        // 确保日期格式统一
-        memeUsage = { ...memeUsage, date: today };
+    if (sceneUsageDate !== today) {
+      sceneUsage = { date: today, count: 0 };
+    } else {
+      // 确保日期格式统一
+      sceneUsage = { ...sceneUsage, date: today };
+    }
+    if (memeUsageDate !== today) {
+      memeUsage = { date: today, count: 0 };
+    } else {
+      // 确保日期格式统一
+      memeUsage = { ...memeUsage, date: today };
       }
     }
 

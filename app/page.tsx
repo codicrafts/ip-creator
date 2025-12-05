@@ -102,7 +102,7 @@ export default function HomePage() {
           {!scrolled && (
             <button
               onClick={() => router.push("/login")}
-              className="px-6 py-2 rounded-full bg-white/50 hover:bg-white text-gray-900 text-sm font-medium transition-all backdrop-blur-sm border border-transparent hover:border-gray-200 shadow-sm hover:shadow"
+              className="hidden md:block px-6 py-2 rounded-full bg-white/50 hover:bg-white text-gray-900 text-sm font-medium transition-all backdrop-blur-sm border border-transparent hover:border-gray-200 shadow-sm hover:shadow"
             >
               登录 / 注册
             </button>
@@ -202,7 +202,7 @@ export default function HomePage() {
           </div>
 
           {/* Scroll Indicator */}
-          <div className="pt-16 animate-float">
+          <div className="pt-16 hidden md:block animate-float">
             <button
               onClick={scrollToFeatures}
               className="p-3 rounded-full bg-white/80 hover:bg-white text-gray-400 hover:text-violet-600 transition-all cursor-pointer shadow-sm hover:shadow-md"
@@ -352,7 +352,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-50 border-t border-gray-200 py-12">
+      <footer className="bg-gray-50 border-t border-gray-200 py-12 pb-24 md:pb-12">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center text-gray-500 text-sm">
           <div className="mb-4 md:mb-0 flex items-center gap-2">
             <Layers size={16} className="text-gray-400" />

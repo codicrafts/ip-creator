@@ -293,85 +293,85 @@ export default function ProfilePage() {
             </div>
 
             {userStatus === "LOGGED_IN" && (
-              <div className="relative z-10 space-y-3">
-                {/* 场景扩展额度 */}
-                <div className="bg-black/20 rounded-xl md:rounded-2xl p-3 md:p-4 backdrop-blur-sm">
-                  <div className="flex justify-between items-end mb-2">
-                    <span className="text-[10px] md:text-xs text-white/80">
-                      场景扩展额度
+            <div className="relative z-10 space-y-3">
+              {/* 场景扩展额度 */}
+              <div className="bg-black/20 rounded-xl md:rounded-2xl p-3 md:p-4 backdrop-blur-sm">
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-[10px] md:text-xs text-white/80">
+                    场景扩展额度
+                  </span>
+                  <span className="font-mono font-bold text-lg md:text-xl">
+                    {sceneRemaining}{" "}
+                    <span className="text-xs md:text-sm text-white/60">
+                      / {sceneLimit}
                     </span>
-                    <span className="font-mono font-bold text-lg md:text-xl">
-                      {sceneRemaining}{" "}
-                      <span className="text-xs md:text-sm text-white/60">
-                        / {sceneLimit}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        membershipPlan
-                          ? membershipPlan.id === UserTier.BASIC
-                            ? "bg-blue-300"
-                            : membershipPlan.id === UserTier.STANDARD
-                            ? "bg-violet-300"
-                            : membershipPlan.id === UserTier.PREMIUM
-                            ? "bg-amber-300"
-                            : "bg-amber-400"
-                          : "bg-white"
-                      }`}
-                      style={{ width: `${100 - scenePercentage}%` }}
-                    ></div>
-                  </div>
+                  </span>
                 </div>
-
-                {/* 表情包制作额度 */}
-                <div className="bg-black/20 rounded-xl md:rounded-2xl p-3 md:p-4 backdrop-blur-sm">
-                  <div className="flex justify-between items-end mb-2">
-                    <span className="text-[10px] md:text-xs text-white/80">
-                      表情包制作额度
-                    </span>
-                    <span className="font-mono font-bold text-lg md:text-xl">
-                      {memeRemaining}{" "}
-                      <span className="text-xs md:text-sm text-white/60">
-                        / {memeLimit}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        membershipPlan
-                          ? membershipPlan.id === UserTier.BASIC
-                            ? "bg-blue-300"
-                            : membershipPlan.id === UserTier.STANDARD
-                            ? "bg-violet-300"
-                            : membershipPlan.id === UserTier.PREMIUM
-                            ? "bg-amber-300"
-                            : "bg-amber-400"
-                          : "bg-white"
-                      }`}
-                      style={{ width: `${100 - memePercentage}%` }}
-                    ></div>
-                  </div>
+                <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      membershipPlan
+                        ? membershipPlan.id === UserTier.BASIC
+                          ? "bg-blue-300"
+                          : membershipPlan.id === UserTier.STANDARD
+                          ? "bg-violet-300"
+                          : membershipPlan.id === UserTier.PREMIUM
+                          ? "bg-amber-300"
+                          : "bg-amber-400"
+                        : "bg-white"
+                    }`}
+                    style={{ width: `${100 - scenePercentage}%` }}
+                  ></div>
                 </div>
-
-                {/* 显示到期时间或重置提示 */}
-                {isPremium && membershipExpiresAt ? (
-                  <p className="text-[10px] text-white/60 text-right">
-                    到期时间:{" "}
-                    {new Date(membershipExpiresAt).toLocaleDateString("zh-CN", {
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                    })}
-                  </p>
-                ) : !isPremium ? (
-                  <p className="text-[10px] text-white/60 text-right">
-                    每日 00:00 重置
-                  </p>
-                ) : null}
               </div>
+
+              {/* 表情包制作额度 */}
+              <div className="bg-black/20 rounded-xl md:rounded-2xl p-3 md:p-4 backdrop-blur-sm">
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-[10px] md:text-xs text-white/80">
+                    表情包制作额度
+                  </span>
+                  <span className="font-mono font-bold text-lg md:text-xl">
+                    {memeRemaining}{" "}
+                    <span className="text-xs md:text-sm text-white/60">
+                      / {memeLimit}
+                    </span>
+                  </span>
+                </div>
+                <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      membershipPlan
+                        ? membershipPlan.id === UserTier.BASIC
+                          ? "bg-blue-300"
+                          : membershipPlan.id === UserTier.STANDARD
+                          ? "bg-violet-300"
+                          : membershipPlan.id === UserTier.PREMIUM
+                          ? "bg-amber-300"
+                          : "bg-amber-400"
+                        : "bg-white"
+                    }`}
+                    style={{ width: `${100 - memePercentage}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* 显示到期时间或重置提示 */}
+              {isPremium && membershipExpiresAt ? (
+                <p className="text-[10px] text-white/60 text-right">
+                  到期时间:{" "}
+                  {new Date(membershipExpiresAt).toLocaleDateString("zh-CN", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  })}
+                </p>
+              ) : !isPremium ? (
+                <p className="text-[10px] text-white/60 text-right">
+                  每日 00:00 重置
+                </p>
+              ) : null}
+            </div>
             )}
 
             {/* Action Buttons */}
@@ -413,33 +413,33 @@ export default function ProfilePage() {
 
           {/* History Link Section */}
           {userStatus === "LOGGED_IN" && (
-            <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm border border-gray-100">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+          <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
                   <div className="w-10 h-10 md:w-12 md:h-12 bg-violet-100 rounded-lg md:rounded-xl flex items-center justify-center shrink-0">
-                    <Clock size={20} className="md:w-6 md:h-6 text-violet-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-base md:text-lg text-gray-800 truncate">
-                      创作历史
-                    </h3>
-                    <p className="text-xs md:text-sm text-gray-500 mt-0.5 truncate">
-                      {history.length > 0
-                        ? `共 ${history.length} 条作品`
-                        : "暂无作品"}
-                    </p>
-                  </div>
+                  <Clock size={20} className="md:w-6 md:h-6 text-violet-600" />
                 </div>
-                <button
-                  onClick={() => router.push("/history")}
-                  className="px-4 py-2 md:px-6 md:py-2.5 bg-violet-600 text-white rounded-lg md:rounded-xl font-semibold text-xs md:text-sm hover:bg-violet-700 transition-colors flex items-center gap-1.5 md:gap-2 shrink-0"
-                >
-                  <Clock size={14} className="md:w-4 md:h-4" />
-                  <span className="hidden sm:inline">查看全部</span>
-                  <span className="sm:hidden">查看</span>
-                </button>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-bold text-base md:text-lg text-gray-800 truncate">
+                    创作历史
+                  </h3>
+                  <p className="text-xs md:text-sm text-gray-500 mt-0.5 truncate">
+                    {history.length > 0
+                      ? `共 ${history.length} 条作品`
+                      : "暂无作品"}
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={() => router.push("/history")}
+                  className="px-4 py-2 md:px-6 md:py-2.5 bg-violet-600 text-white rounded-lg md:rounded-xl font-semibold text-xs md:text-sm hover:bg-violet-700 transition-colors flex items-center gap-1.5 md:gap-2 shrink-0"
+              >
+                <Clock size={14} className="md:w-4 md:h-4" />
+                <span className="hidden sm:inline">查看全部</span>
+                <span className="sm:hidden">查看</span>
+              </button>
             </div>
+          </div>
           )}
         </div>
       </div>
