@@ -37,4 +37,4 @@ ENV NODE_ENV=production
 EXPOSE 3000
 
 # 启动命令
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]
