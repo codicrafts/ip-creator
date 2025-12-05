@@ -23,6 +23,9 @@ const zcool = ZCOOL_QingKe_HuangYou({
 export const metadata: Metadata = {
   title: "IP 创想坊",
   description: "一键生成场景与表情包，打造属于你的 IP 生态",
+  icons: {
+    icon: "/logo.svg",
+  },
 };
 
 // 标记为动态渲染，因为使用了 cookies
